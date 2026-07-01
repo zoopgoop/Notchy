@@ -1,13 +1,13 @@
-apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
-apply plugin: 'expo-module'
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
 
 android {
   namespace "expo.modules.countdownnotification"
-  compileSdk 36
-
   defaultConfig {
-    minSdk 24
+    versionCode 1
+    versionName "1.0.0"
   }
 }
 

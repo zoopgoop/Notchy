@@ -46,3 +46,7 @@ CLAUDE.md
 # generated native folders
 /ios
 /android
+
+# Local module build artifacts
+modules/*/android/build/
+modules/*/android/.cxx/
