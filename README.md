@@ -1,6 +1,6 @@
 # Notchy
 
-A habit-tracking Android app built with Expo / React Native. Notchy is built around the idea that showing up consistently matters more than hitting a precise number every day — so the streak system rewards weekly check-in counts, not specific days, letting you log on whichever days suit you.
+A habit-tracking Android app built with Expo / React Native. Notchy was an app built to solve a personal problem, I wanted an app that rewards progress not just a flat yes no log. No habit tracking app I found rewarded both showing with a streak as well as hitting a target and reaching a goal. This app does both.
 
 ## Features
 
