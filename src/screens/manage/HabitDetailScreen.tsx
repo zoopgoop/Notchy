@@ -27,7 +27,9 @@ import {
   setGoalNotificationTimes,
   setHabitCategory,
 } from "../../db/repositories";
+import { cancelGoalNotifications } from "../../services/notifications";
 import { today } from "../../engine/dateUtils";
+import { projectFutureTargets } from "../../engine/progression";
 import { scheduledDaysAsOf, weeklySkipLimitFor } from "../../engine/schedule";
 import { useCategories } from "../../hooks/useCategories";
 import { getFreezesEnabled } from "../../services/settings";
@@ -103,6 +105,10 @@ export function HabitDetailScreen({ route, navigation }: Props) {
   );
 
   const currentDays = useMemo(() => scheduledDaysAsOf(schedules, today()), [schedules]);
+  const projectedTargets = useMemo(
+    () => (goal && habit ? projectFutureTargets(goal, habit, schedules, entries) : []),
+    [goal, habit, schedules, entries]
+  );
 
   async function handleCategoryChange(categoryId: string | undefined) {
     await setHabitCategory(habitId, categoryId);
@@ -151,12 +157,14 @@ export function HabitDetailScreen({ route, navigation }: Props) {
 
   async function performDeactivate() {
     if (!goal) return;
+    await cancelGoalNotifications(goal.id);
     await forfeitCurrentStreak(goal.id);
     await setGoalActive(goal.id, false);
     refetch();
   }
 
   async function performDeleteHabit() {
+    if (goal) await cancelGoalNotifications(goal.id);
     await deleteHabit(habitId);
     navigation.goBack();
   }
@@ -210,6 +218,7 @@ export function HabitDetailScreen({ route, navigation }: Props) {
                 ) : (
                   <ProgressChart
                     entries={entries}
+                    projectedTargets={projectedTargets}
                     targetValue={goal.targetValue}
                     color={theme.primary}
                     unit={unit}

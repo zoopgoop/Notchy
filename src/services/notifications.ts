@@ -77,17 +77,52 @@ function initialNotificationId(goalId: string): string {
   return `initial-${goalId}`;
 }
 
-/** "HabitName: 5 km" for numeric habits with a pending target today, just the name for boolean ones. */
-function formatPendingTarget(view: DailyGoalView): string {
-  if (view.status.kind !== "pending" || view.habit.type === "boolean") return view.habit.name;
-  return `${view.habit.name}: ${formatNumber(view.status.target)}${unitSuffix(view.habit.unitLabel)}`;
-}
+const STREAK_MILESTONES = new Set([7, 14, 30, 50, 100, 250, 500, 1000, 2500, 5000]);
 
-/** Names the pending target, and calls out the streak at stake, if any, for encouragement. */
-function buildInitialNotificationBody(view: DailyGoalView): string {
-  const target = formatPendingTarget(view);
-  if (view.streak.current === 0) return `${target}.`;
-  return `${target}. Extend your ${view.streak.current}-day streak!`;
+function buildInitialNotification(view: DailyGoalView): { title: string; body: string } {
+  const name = view.habit.name;
+  const streak = view.streak.current;
+
+  if (view.isCrisis) {
+    return {
+      title: "Streak SOS",
+      body: `${name} needs attention — use a skip to rescue your ${streak}-day streak.`,
+    };
+  }
+
+  if (view.isUrgentToday && streak > 0) {
+    return {
+      title: "Last chance today",
+      body: `Log ${name} now to keep your ${streak}-day streak alive!`,
+    };
+  }
+
+  if (view.daysUntilTarget !== null && view.daysUntilTarget >= 0 && view.daysUntilTarget <= 7) {
+    const days = view.daysUntilTarget;
+    const countdown = days === 0 ? "Last day!" : `${days} ${days === 1 ? "day" : "days"} left.`;
+    return {
+      title: "Final countdown",
+      body: `${countdown} Give ${name} everything you've got.`,
+    };
+  }
+
+  if (STREAK_MILESTONES.has(streak)) {
+    return {
+      title: `${streak}-day streak!`,
+      body: `Incredible consistency on ${name}. Let's make it ${streak + 1}.`,
+    };
+  }
+
+  const targetPart =
+    view.habit.type !== "boolean" && view.status.kind === "pending"
+      ? ` Your target is ${formatNumber(view.status.target)}${unitSuffix(view.habit.unitLabel)}.`
+      : "";
+  const streakPart = streak > 0 ? ` You're on a ${streak}-day streak!` : "";
+
+  return {
+    title: "Time to check in",
+    body: `Let's check in for ${name}!${targetPart}${streakPart}`,
+  };
 }
 
 /**
@@ -112,16 +147,19 @@ async function scheduleInitialNotifications(items: DailyGoalView[], pending: Dai
       const fireDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), time.hour, time.minute, 0, 0);
       if (fireDate.getTime() <= now.getTime()) return;
 
+      const { title, body } = buildInitialNotification(view);
       await Notifications.scheduleNotificationAsync({
         identifier: initialNotificationId(view.goal.id),
-        content: {
-          title: "Time to check in",
-          body: buildInitialNotificationBody(view),
-        },
+        content: { title, body },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireDate },
       });
     })
   );
+}
+
+/** Cancels the initial reminder for a specific goal — call this before deleting a goal or habit so the OS notification doesn't outlive the DB record. */
+export async function cancelGoalNotifications(goalId: string): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(initialNotificationId(goalId)).catch(() => {});
 }
 
 /**

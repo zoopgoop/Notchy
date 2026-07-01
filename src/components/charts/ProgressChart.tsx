@@ -15,11 +15,14 @@ const PADDING = 12;
  */
 export function ProgressChart({
   entries,
+  projectedTargets = [],
   targetValue,
   color,
   unit,
 }: {
   entries: LoggedEntry[];
+  /** Pre-computed future targets from the progression engine — extends the dashed line forward. */
+  projectedTargets?: number[];
   /** Absent for goalless (open-ended) habits — the axis just scales to the data instead. */
   targetValue?: number;
   color: string;
@@ -30,13 +33,17 @@ export function ProgressChart({
     (e): e is LoggedEntry & { actualValue: number } => e.actualValue !== undefined
   );
 
-  if (points.length < 2) {
+  if (points.length < 2 && projectedTargets.length === 0) {
     return (
       <Text style={styles.empty}>Log a few more entries to see your progress chart here.</Text>
     );
   }
 
+  // X-axis spans all sessions — logged on the left, projected on the right.
+  const totalCount = Math.max(points.length + projectedTargets.length, 2);
+
   const values = points.flatMap((p) => [p.actualValue, p.generatedTarget]);
+  values.push(...projectedTargets);
   if (targetValue !== undefined) values.push(targetValue);
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
@@ -45,11 +52,21 @@ export function ProgressChart({
   const chartWidth = Math.max(width - PADDING * 2, 0);
   const chartHeight = CHART_HEIGHT - PADDING * 2;
 
-  const xFor = (index: number) => PADDING + (index / (points.length - 1)) * chartWidth;
+  const xFor = (index: number) => PADDING + (index / (totalCount - 1)) * chartWidth;
   const yFor = (value: number) => PADDING + chartHeight - ((value - minValue) / valueRange) * chartHeight;
 
   const actualLine = points.map((p, i) => `${xFor(i)},${yFor(p.actualValue)}`).join(" ");
-  const targetLine = points.map((p, i) => `${xFor(i)},${yFor(p.generatedTarget)}`).join(" ");
+  const loggedTargetLine = points.map((p, i) => `${xFor(i)},${yFor(p.generatedTarget)}`).join(" ");
+
+  // Projected line starts from the last logged entry's target so the arc flows continuously.
+  const lastLoggedTarget = points.length > 0 ? points[points.length - 1].generatedTarget : null;
+  const projectedLine =
+    projectedTargets.length > 0 && lastLoggedTarget !== null
+      ? [
+          `${xFor(points.length - 1)},${yFor(lastLoggedTarget)}`,
+          ...projectedTargets.map((t, i) => `${xFor(points.length + i)},${yFor(t)}`),
+        ].join(" ")
+      : null;
 
   return (
     <View>
@@ -70,13 +87,25 @@ export function ProgressChart({
               stroke={theme.border}
               strokeWidth={1}
             />
+            {/* Solid portion of target line through logged entries */}
             <Polyline
-              points={targetLine}
+              points={loggedTargetLine}
               fill="none"
               stroke={theme.textMuted}
               strokeWidth={1.5}
               strokeDasharray="5,4"
             />
+            {/* Projected continuation — lighter to distinguish future from history */}
+            {projectedLine && (
+              <Polyline
+                points={projectedLine}
+                fill="none"
+                stroke={theme.textMuted}
+                strokeWidth={1}
+                strokeDasharray="3,5"
+                opacity={0.45}
+              />
+            )}
             <Polyline points={actualLine} fill="none" stroke={color} strokeWidth={2.5} />
             {points.map((p, i) => (
               <Circle
@@ -98,7 +127,10 @@ export function ProgressChart({
       </View>
       <View style={styles.legend}>
         <LegendItem swatchColor={color} label="Actual" />
-        <LegendItem swatchColor={theme.textMuted} label="Daily target" dashed />
+        <LegendItem swatchColor={theme.textMuted} label="Target" dashed />
+        {projectedTargets.length > 0 && (
+          <LegendItem swatchColor={theme.textMuted} label="Projected" dashed faded />
+        )}
         <LegendItem swatchColor="#4CAF50" label="Hit" dot />
         <LegendItem swatchColor={theme.danger} label="Miss" dot />
       </View>
@@ -110,15 +142,17 @@ function LegendItem({
   swatchColor,
   label,
   dashed,
+  faded,
   dot,
 }: {
   swatchColor: string;
   label: string;
   dashed?: boolean;
+  faded?: boolean;
   dot?: boolean;
 }) {
   return (
-    <View style={styles.legendItem}>
+    <View style={[styles.legendItem, faded && { opacity: 0.45 }]}>
       <View
         style={[
           dot ? styles.legendDot : styles.legendLine,

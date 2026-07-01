@@ -1,5 +1,5 @@
 import { FreezeWindow, Goal, GoalSchedule, LoggedEntry, SkipLog } from "../types";
-import { addDays, daysBetween, getWeekday } from "./dateUtils";
+import { addDays, getWeekday } from "./dateUtils";
 
 /** `schedules` must be ascending by `effectiveDate` (as returned by `listGoalSchedules`). */
 export function scheduledDaysAsOf(schedules: GoalSchedule[], date: string): number[] {
@@ -12,17 +12,6 @@ export function scheduledDaysAsOf(schedules: GoalSchedule[], date: string): numb
     }
   }
   return result;
-}
-
-/**
- * The 7 days up to and including a goal's target date are a free-practice week —
- * log whenever you like, no schedule enforcement, since the only thing that
- * actually matters by then is whether the final log hits the target.
- */
-export function isFinalWeek(goal: Pick<Goal, "targetDate">, date: string): boolean {
-  if (!goal.targetDate) return false;
-  const daysUntilTarget = daysBetween(date, goal.targetDate);
-  return daysUntilTarget >= 0 && daysUntilTarget <= 6;
 }
 
 /** Skip allowance scales with how many days/week are scheduled — fewer required days, fewer skips. */
@@ -44,7 +33,7 @@ export interface WeekTally {
   required: number;
   /** Distinct days this week with a log or a skip. */
   credited: number;
-  /** A freeze window or the final practice week touched this week — no quota applies at all. */
+  /** A freeze window touched this week — no quota applies at all. */
   exempt: boolean;
 }
 
@@ -54,7 +43,7 @@ export interface WeekTally {
  */
 export function tallyWeek(
   schedules: GoalSchedule[],
-  goal: Pick<Goal, "targetDate">,
+  goal: Pick<Goal, "targetDate" | "createdAt">,
   entries: LoggedEntry[],
   skips: SkipLog[],
   freezeWindows: FreezeWindow[],
@@ -68,10 +57,7 @@ export function tallyWeek(
   let credited = 0;
   let cursor = weekStart;
   while (cursor <= weekEnd) {
-    if (
-      isFinalWeek(goal, cursor) ||
-      freezeWindows.some((f) => f.startDate <= cursor && f.endDate >= cursor)
-    ) {
+    if (freezeWindows.some((f) => f.startDate <= cursor && f.endDate >= cursor)) {
       exempt = true;
     }
     if (loggedDates.has(cursor) || skipDates.has(cursor)) {
@@ -80,7 +66,19 @@ export function tallyWeek(
     cursor = addDays(cursor, 1);
   }
 
-  return { weekStart, required: scheduledDaysAsOf(schedules, weekStart).length, credited, exempt };
+  // Trim the required window symmetrically: start no earlier than createdAt (first week),
+  // end no later than targetDate (final week). Counts only scheduled days in that window.
+  const effectiveStart = goal.createdAt.slice(0, 10) > weekStart ? goal.createdAt.slice(0, 10) : weekStart;
+  const effectiveEnd = goal.targetDate && goal.targetDate < weekEnd ? goal.targetDate : weekEnd;
+  const scheduledDays = scheduledDaysAsOf(schedules, weekStart);
+  let required = 0;
+  let day = effectiveStart;
+  while (day <= effectiveEnd) {
+    if (scheduledDays.includes(getWeekday(day))) required++;
+    day = addDays(day, 1);
+  }
+
+  return { weekStart, required, credited, exempt };
 }
 
 export interface ScheduleDayResult {
@@ -99,7 +97,7 @@ export interface ScheduleDayResult {
  */
 export function walkWeeklySchedule(
   schedules: GoalSchedule[],
-  goal: Pick<Goal, "targetDate">,
+  goal: Pick<Goal, "targetDate" | "createdAt">,
   entries: LoggedEntry[],
   skips: SkipLog[],
   freezeWindows: FreezeWindow[],
@@ -140,7 +138,7 @@ export interface WeekStatus {
 /** The live, in-progress state of the current week — feeds urgency/crisis detection and the weekly-progress tile. */
 export function currentWeekStatus(
   schedules: GoalSchedule[],
-  goal: Pick<Goal, "targetDate">,
+  goal: Pick<Goal, "targetDate" | "createdAt">,
   entries: LoggedEntry[],
   skips: SkipLog[],
   freezeWindows: FreezeWindow[],

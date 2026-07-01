@@ -1,5 +1,6 @@
 import { Direction, Goal, GoalSchedule, Habit, LoggedEntry } from "../types";
 import { countScheduledDaysBetween } from "./schedule";
+import { today } from "./dateUtils";
 import {
   adaptiveMultiplier,
   CONSECUTIVE_MISSES_FOR_DELOAD,
@@ -118,6 +119,75 @@ export function generateNextTarget(
   }
 
   return { target: lastEntry.generatedTarget, reason: "hold" };
+}
+
+const PROJECTED_SAMPLE_COUNT = 24;
+
+/**
+ * Returns projected targets for future sessions, starting from the current anchor
+ * (last hit entry or goal start). For date-driven goals the curve formula is evaluated
+ * at evenly-spaced intervals from now to targetDate. For open-ended goals a fixed number
+ * of sessions are simulated forward, assuming hits (optimistic path).
+ * Returns [] for boolean habits or when there are no remaining sessions.
+ */
+export function projectFutureTargets(
+  goal: Goal,
+  habit: Habit,
+  schedules: GoalSchedule[],
+  entries: LoggedEntry[]
+): number[] {
+  if (habit.type === "boolean") return [];
+
+  const direction = requireDirection(habit);
+  const multiplier = goal.adaptive ? adaptiveMultiplier(entries.map((e) => e.hit)) : 1;
+
+  if (goal.targetDate && goal.targetValue !== undefined && goal.curveType !== "percentage") {
+    const lastHit = [...entries].reverse().find((e) => e.hit);
+    const anchorValue = lastHit ? (lastHit.actualValue ?? lastHit.generatedTarget) : goal.startValue;
+    const anchorDate = lastHit?.date ?? goal.createdAt;
+    const totalFromAnchor = countScheduledDaysBetween(schedules, anchorDate, goal.targetDate);
+    const elapsedFromAnchor = countScheduledDaysBetween(schedules, anchorDate, today());
+    const remaining = Math.max(totalFromAnchor - elapsedFromAnchor, 0);
+
+    if (remaining === 0) return [];
+
+    const count = Math.min(remaining, PROJECTED_SAMPLE_COUNT);
+    const results: number[] = [];
+
+    for (let i = 1; i <= count; i++) {
+      const periodsElapsed = (elapsedFromAnchor + (remaining * i) / count) * multiplier;
+      const totalPeriods = totalFromAnchor * multiplier;
+      let raw: number;
+      if (goal.curveType === "linear") {
+        raw = linearTarget(anchorValue, goal.targetValue, periodsElapsed, totalPeriods);
+      } else if (goal.curveType === "exponential") {
+        raw = exponentialTarget(anchorValue, goal.targetValue, periodsElapsed, totalPeriods);
+      } else {
+        raw = incrementalTarget(anchorValue, goal.targetValue, periodsElapsed, totalPeriods);
+      }
+      results.push(clampTowardTarget(raw, goal, direction));
+    }
+    return results;
+  }
+
+  // Open-ended: simulate forward assuming hits
+  const todayStr = today();
+  const simulatedEntries = [...entries];
+  const results: number[] = [];
+  for (let i = 0; i < PROJECTED_SAMPLE_COUNT; i++) {
+    const { target } = generateNextTarget(goal, habit, schedules, simulatedEntries, todayStr);
+    results.push(target);
+    simulatedEntries.push({
+      id: `sim-${i}`,
+      goalId: goal.id,
+      date: todayStr,
+      actualValue: target,
+      generatedTarget: target,
+      hit: true,
+      tagIds: [],
+    } as LoggedEntry);
+  }
+  return results;
 }
 
 /** Boolean habits hit only on an exact "yes" (1) — everything else defers to direction-aware `isHit`. */

@@ -456,7 +456,6 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
               </View>
               <HintText>
                 Watches your last 7 entries. Hitting ≥80% of them pushes the pace up; ≤30% eases it back.
-                Layers on top of whichever curve you picked above.
               </HintText>
             </FieldGroup>
           )}
