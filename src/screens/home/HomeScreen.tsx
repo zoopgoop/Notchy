@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
-import { Animated, Easing, FlatList, LayoutAnimation, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, FlatList, LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { CelebrationOverlay } from "../../components/celebration/CelebrationOverlay";
+import { EncouragementToast } from "../../components/celebration/EncouragementToast";
 import { HabitLogCalendar } from "../../components/charts/HabitLogCalendar";
 import { ProgressChart } from "../../components/charts/ProgressChart";
 import { ActionSheet, ActionSheetOption } from "../../components/ui/ActionSheet";
@@ -14,13 +15,17 @@ import {
   getHabit,
   listAchievedGoals,
   listEntriesByGoal,
+  listGoalSchedules,
   listSkipsByGoal,
   setGoalActive,
   updateGoal,
 } from "../../db/repositories";
+import { projectFutureTargets } from "../../engine/progression";
+import { useCategories } from "../../hooks/useCategories";
 import { useDailyGoals } from "../../hooks/useDailyGoals";
 import { pickPrimaryCelebration } from "../../services/celebrations";
 import { DailyGoalView } from "../../services/dailyGoals";
+import { takePendingCelebration, takePendingEncouragement } from "../../services/pendingCelebration";
 import { logGoalEntry, skipGoalToday, spendSkipsToSaveStreak } from "../../services/dailyStatus";
 import { getFreezesEnabled, getSkipsEnabled, getUserName } from "../../services/settings";
 import { forfeitCurrentStreak, recomputeStreak } from "../../services/streaks";
@@ -29,6 +34,7 @@ import { addDays, daysBetween, today } from "../../engine/dateUtils";
 import { cardShadow, theme, UNCATEGORIZED_COLOR } from "../../theme";
 import { Celebration, Goal, Habit, LoggedEntry, SkipLog } from "../../types";
 import { formatNumber, unitSuffix } from "../../utils/format";
+import { mediumTap } from "../../utils/haptics";
 import { shouldShowMomentum } from "../../utils/momentum";
 import { HomeStackParamList } from "../../navigation/types";
 import { HabitAchievedPrompt } from "./HabitAchievedPrompt";
@@ -50,6 +56,23 @@ type DialogState =
   | { kind: "deactivateConfirm"; view: DailyGoalView }
   | null;
 
+function tierOf(item: DailyGoalView): number {
+  if (item.isCrisis || item.isUrgentToday || item.isOverdue) return 0;
+  if (item.daysUntilTarget !== null && item.daysUntilTarget <= 7) return 1;
+  const todayMs = Date.parse(new Date().toISOString().slice(0, 10));
+  if ((todayMs - Date.parse(item.goal.createdAt.slice(0, 10))) / 86400000 <= 7) return 2;
+  if (item.streak.current > 0) return 3;
+  return 4;
+}
+
+function FilterPill({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable style={[styles.pill, active && styles.pillActive]} onPress={onPress}>
+      <Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function formatNextDue(nextDue: string | null): string | null {
   if (!nextDue) return null;
   const todayStr = today();
@@ -60,20 +83,25 @@ function formatNextDue(nextDue: string | null): string | null {
 
 export function HomeScreen({ navigation }: Props) {
   const { items, refetch } = useDailyGoals();
+  const { categories } = useCategories();
   const [name, setName] = useState<string | null>(null);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
   const [actionSheetView, setActionSheetView] = useState<DailyGoalView | null>(null);
   const [achievedItems, setAchievedItems] = useState<AchievedItem[]>([]);
   const [showCompleted, setShowCompleted] = useState(false);
   const [dialog, setDialog] = useState<DialogState>(null);
-  const [celebrationState, setCelebrationState] = useState<{ celebration: Celebration; view: DailyGoalView } | null>(
-    null
-  );
-  const [achievedView, setAchievedView] = useState<DailyGoalView | null>(null);
-  const [daysEarly, setDaysEarly] = useState<number | null>(null);
+  const [celebrationState, setCelebrationState] = useState<{
+    celebration: Celebration;
+    habitName: string;
+    goalId: string;
+    targetDate?: string;
+  } | null>(null);
+  const [achievedGoal, setAchievedGoal] = useState<{ habitName: string; goalId: string; daysEarly: number | null } | null>(null);
   const [skipsEnabled, setSkipsEnabled] = useState(true);
   const [freezesEnabled, setFreezesEnabled] = useState(true);
   const [letGoFor, setLetGoFor] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [showEncouragement, setShowEncouragement] = useState(false);
 
   const loadAchieved = useCallback(async () => {
     const goals = await listAchievedGoals();
@@ -93,8 +121,25 @@ export function HomeScreen({ navigation }: Props) {
       loadAchieved();
       getSkipsEnabled().then(setSkipsEnabled);
       getFreezesEnabled().then(setFreezesEnabled);
+      if (takePendingEncouragement()) setShowEncouragement(true);
+      const pending = takePendingCelebration();
+      if (pending) {
+        setCelebrationState({ celebration: pending.celebration, habitName: pending.habitName, goalId: pending.goalId, targetDate: pending.targetDate });
+      }
     }, [refetch, loadAchieved])
   );
+
+  const filteredItems = useMemo(() => {
+    if (activeFilter === "all") return items;
+    if (activeFilter === "urgent") return items.filter((i) => i.isCrisis || i.isUrgentToday || i.isOverdue);
+    if (activeFilter === "new") {
+      const todayMs = Date.parse(new Date().toISOString().slice(0, 10));
+      return items.filter((i) => (todayMs - Date.parse(i.goal.createdAt.slice(0, 10))) / 86400000 <= 7);
+    }
+    return items.filter((i) => i.category?.id === activeFilter);
+  }, [items, activeFilter]);
+
+  const behindCount = items.filter((i) => i.isCrisis || i.isUrgentToday || i.isOverdue).length;
 
   const missedDeadlineView = useMemo(
     () => items.find((item) => item.daysUntilTarget !== null && item.daysUntilTarget < 0) ?? null,
@@ -136,7 +181,7 @@ export function HomeScreen({ navigation }: Props) {
     refetch();
     const primary = pickPrimaryCelebration(celebrations);
     if (primary) {
-      setCelebrationState({ celebration: primary, view });
+      setCelebrationState({ celebration: primary, habitName: view.habit.name, goalId: view.goal.id, targetDate: view.goal.targetDate });
     }
   }
 
@@ -149,16 +194,19 @@ export function HomeScreen({ navigation }: Props) {
   }
 
   function handleEditAndContinue() {
-    if (!achievedView) return;
-    navigation.navigate("HabitGoalForm", { editGoalId: achievedView.goal.id });
+    if (!achievedGoal) return;
+    const goalId = achievedGoal.goalId;
+    setAchievedGoal(null);
+    navigation.navigate("HabitGoalForm", { editGoalId: goalId });
   }
 
   function handleMarkComplete() {
-    setAchievedView(null);
+    setAchievedGoal(null);
     refetch();
   }
 
   function handleLongPress(view: DailyGoalView) {
+    mediumTap();
     setActionSheetView(view);
   }
 
@@ -216,7 +264,7 @@ export function HomeScreen({ navigation }: Props) {
   return (
     <Screen scroll={false}>
       <FlatList
-        data={items}
+        data={[...filteredItems].sort((a, b) => tierOf(a) - tierOf(b))}
         keyExtractor={(item) => item.goal.id}
         contentContainerStyle={styles.list}
         overScrollMode="never"
@@ -234,6 +282,9 @@ export function HomeScreen({ navigation }: Props) {
                 <Text style={styles.weeklyHeadline}>
                   {weeklySummary.totalHits} of {weeklySummary.totalPossible} this week
                 </Text>
+                {behindCount > 0 && (
+                  <Text style={styles.weeklyAlert}>{behindCount} habit{behindCount === 1 ? "" : "s"} behind this week</Text>
+                )}
                 {weeklySummary.bestDay && (
                   <Text style={styles.weeklySubtext}>
                     Best day: {weeklySummary.bestDay.date} ({weeklySummary.bestDay.hits} hit
@@ -242,6 +293,14 @@ export function HomeScreen({ navigation }: Props) {
                 )}
               </View>
             )}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillRow} contentContainerStyle={styles.pillRowContent}>
+            <FilterPill label="All" active={activeFilter === "all"} onPress={() => setActiveFilter("all")} />
+            <FilterPill label="Urgent" active={activeFilter === "urgent"} onPress={() => setActiveFilter("urgent")} />
+            <FilterPill label="New" active={activeFilter === "new"} onPress={() => setActiveFilter("new")} />
+            {categories.map((cat) => (
+              <FilterPill key={cat.id} label={cat.name} active={activeFilter === cat.id} onPress={() => setActiveFilter(cat.id)} />
+            ))}
+          </ScrollView>
           </View>
         }
         renderItem={({ item }) => (
@@ -253,7 +312,7 @@ export function HomeScreen({ navigation }: Props) {
             onUndoYes={() => handleUndoYes(item)}
             onSkip={() => setDialog({ kind: "skipConfirm", view: item })}
             onSkipInfo={() => setDialog({ kind: "skipInfo", view: item })}
-            onLongPress={() => handleLongPress(item)}
+            onMenu={() => handleLongPress(item)}
           />
         )}
         ListFooterComponent={
@@ -386,13 +445,12 @@ export function HomeScreen({ navigation }: Props) {
       {celebrationState && (
         <CelebrationOverlay
           celebration={celebrationState.celebration}
-          habitName={celebrationState.view.habit.name}
+          habitName={celebrationState.habitName}
           onDismiss={() => {
-            const { celebration, view } = celebrationState;
+            const { celebration, habitName, goalId, targetDate } = celebrationState;
             setCelebrationState(null);
             if (celebration.type === "goal_achieved") {
-              setDaysEarly(view.goal.targetDate ? daysBetween(today(), view.goal.targetDate) : null);
-              setAchievedView(view);
+              setAchievedGoal({ habitName, goalId, daysEarly: targetDate ? daysBetween(today(), targetDate) : null });
             } else {
               refetch();
             }
@@ -400,10 +458,14 @@ export function HomeScreen({ navigation }: Props) {
         />
       )}
 
-      {achievedView && (
+      {showEncouragement && (
+        <EncouragementToast onDismiss={() => { setShowEncouragement(false); refetch(); }} />
+      )}
+
+      {achievedGoal && (
         <HabitAchievedPrompt
-          habitName={achievedView.habit.name}
-          daysEarly={daysEarly}
+          habitName={achievedGoal.habitName}
+          daysEarly={achievedGoal.daysEarly}
           onEditAndContinue={handleEditAndContinue}
           onMarkComplete={handleMarkComplete}
         />
@@ -440,7 +502,7 @@ function GoalCard({
   onUndoYes,
   onSkip,
   onSkipInfo,
-  onLongPress,
+  onMenu,
 }: {
   view: DailyGoalView;
   skipsEnabled: boolean;
@@ -449,7 +511,7 @@ function GoalCard({
   onUndoYes: () => void;
   onSkip: () => void;
   onSkipInfo: () => void;
-  onLongPress: () => void;
+  onMenu: () => void;
 }) {
   const {
     goal,
@@ -463,7 +525,9 @@ function GoalCard({
     daysUntilTarget,
     nextDue,
     isUrgentToday,
+    isOverdue,
     isCrisis,
+    nextTarget,
   } = view;
   const unit = unitSuffix(habit.unitLabel);
   const color = category?.color ?? UNCATEGORIZED_COLOR;
@@ -473,15 +537,27 @@ function GoalCard({
   const [expanded, setExpanded] = useState(false);
   const [entries, setEntries] = useState<LoggedEntry[] | null>(null);
   const [skips, setSkips] = useState<SkipLog[]>([]);
+  const [projectedTargets, setProjectedTargets] = useState<number[]>([]);
 
-  // Refetches whenever the card opens, and again whenever a log/undo changes status while
-  // it's already open — otherwise the chart silently shows whatever was logged as of the
-  // last time it was opened.
   useEffect(() => {
     if (!expanded) return;
-    listEntriesByGoal(goal.id).then(setEntries);
-    listSkipsByGoal(goal.id).then(setSkips);
-  }, [expanded, goal.id, status.kind]);
+    let cancelled = false;
+    Promise.all([
+      listEntriesByGoal(goal.id),
+      listSkipsByGoal(goal.id),
+      listGoalSchedules(goal.id),
+    ]).then(([loadedEntries, loadedSkips, loadedSchedules]) => {
+      if (cancelled) return;
+      setEntries(loadedEntries);
+      setSkips(loadedSkips);
+      if (habit.type !== "boolean") {
+        setProjectedTargets(projectFutureTargets(goal, habit, loadedSchedules, loadedEntries));
+      }
+    });
+    return () => { cancelled = true; };
+  // goal.id and habit.type are stable primitives — avoids re-firing on every object reference change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, goal.id, habit.type, status.kind, status.kind === "logged" ? status.entry.actualValue : null]);
 
   function toggleExpanded() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -495,7 +571,7 @@ function GoalCard({
       <Pressable
         style={({ pressed }) => [styles.cardHeader, pressed && styles.cardHeaderPressed]}
         onPress={toggleExpanded}
-        onLongPress={onLongPress}
+        onLongPress={onMenu}
       >
         <View style={styles.cardHeaderLeft}>
           <View style={[styles.dot, { backgroundColor: statusColor }]} />
@@ -510,7 +586,16 @@ function GoalCard({
             <Text style={styles.momentum}>{momentum === "up" ? "↗" : "→"}</Text>
           )}
         </View>
-        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={theme.textMuted} />
+        <View style={styles.cardHeaderRight}>
+          <Pressable
+            hitSlop={8}
+            onPress={onMenu}
+            style={({ pressed }) => [styles.menuButton, pressed && styles.menuButtonPressed]}
+          >
+            <Ionicons name="ellipsis-horizontal" size={18} color={theme.textMuted} />
+          </Pressable>
+          <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={theme.textMuted} />
+        </View>
       </Pressable>
 
       <View style={styles.metaRow}>
@@ -522,10 +607,13 @@ function GoalCard({
         {daysUntilTarget !== null && (
           <Text style={styles.metaText}>{Math.max(daysUntilTarget, 0)} days left</Text>
         )}
-        {nextDueLabel && <Text style={styles.metaText}>Next due: {nextDueLabel}</Text>}
+        {nextDueLabel && !isOverdue && <Text style={styles.metaText}>Next due: {nextDueLabel}</Text>}
       </View>
-      {isUrgentToday && (
+      {isUrgentToday && streak.current > 0 && (
         <Text style={styles.urgentText}>⚠️ Complete a check-in today to keep your streak alive!</Text>
+      )}
+      {isOverdue && !isUrgentToday && (
+        <Text style={styles.overdueText}>⚠️ Overdue — you're behind this week. Check in today to catch up.</Text>
       )}
 
       {expanded && (
@@ -535,7 +623,7 @@ function GoalCard({
           ) : habit.type === "boolean" ? (
             <HabitLogCalendar entries={entries} skips={skips} />
           ) : (
-            <ProgressChart entries={entries} targetValue={goal.targetValue} color={color} unit={unit} />
+            <ProgressChart entries={entries} targetValue={goal.targetValue} color={color} unit={unit} projectedTargets={projectedTargets} />
           )}
         </View>
       )}
@@ -563,6 +651,11 @@ function GoalCard({
                 ? `Logged: ${formatNumber(status.entry.actualValue)}${unit}`
                 : "Done"}
             </Text>
+            {nextTarget !== null && (
+              <Text style={styles.nextTarget}>
+                · Tomorrow's target: {formatNumber(nextTarget)}{unit}
+              </Text>
+            )}
           </View>
           <Pressable
             style={({ pressed }) => [styles.logAgainButton, pressed && styles.logAgainPressed]}
@@ -577,7 +670,7 @@ function GoalCard({
         <>
           {habit.type !== "boolean" && (
             <Text style={styles.target}>
-              Daily target: {formatNumber(status.target)}
+              Today's target: {formatNumber(status.target)}
               {unit}
             </Text>
           )}
@@ -724,6 +817,44 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     marginBottom: 10,
+  },
+  overdueText: {
+    color: theme.warning,
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 10,
+  },
+  weeklyAlert: {
+    color: theme.warning,
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  pillRow: {
+    marginTop: 12,
+  },
+  pillRowContent: {
+    gap: 8,
+    paddingBottom: 4,
+  },
+  pill: {
+    borderColor: theme.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  pillActive: {
+    backgroundColor: theme.primary,
+    borderColor: theme.primary,
+  },
+  pillText: {
+    color: theme.textMuted,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  pillTextActive: {
+    color: "#FFFFFF",
   },
   chartBox: {
     borderTopColor: theme.border,
@@ -875,5 +1006,21 @@ const styles = StyleSheet.create({
   completedRowDate: {
     color: theme.textMuted,
     fontSize: 12,
+  },
+  cardHeaderRight: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  menuButton: {
+    padding: 2,
+  },
+  menuButtonPressed: {
+    opacity: 0.5,
+  },
+  nextTarget: {
+    color: theme.textMuted,
+    fontSize: 13,
+    marginLeft: 4,
   },
 });

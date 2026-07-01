@@ -86,7 +86,7 @@ export function GoalFormScreen({ route, navigation }: Props) {
     scheduledDays.length > 0 &&
     (isBoolean ||
       (!isNaN(parsedStart) &&
-        (!hasTarget || !isNaN(parsedTarget)) &&
+        (!hasTarget || (!isNaN(parsedTarget) && parsedTarget !== parsedStart)) &&
         !isNaN(parsedStep) &&
         (progressionMode === "relative" || parsedStep >= 1)));
 

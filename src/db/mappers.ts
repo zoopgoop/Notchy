@@ -61,6 +61,7 @@ export interface GoalRow {
   achieved_at: string | null;
   created_at: string;
   active: number;
+  notify_off_schedule: number;
 }
 
 export function rowToGoal(row: GoalRow): Goal {
@@ -77,6 +78,7 @@ export function rowToGoal(row: GoalRow): Goal {
     achievedAt: row.achieved_at ?? undefined,
     createdAt: row.created_at,
     active: !!row.active,
+    notifyOffSchedule: row.notify_off_schedule !== 0,
   };
 }
 

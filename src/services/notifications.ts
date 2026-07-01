@@ -90,10 +90,19 @@ function buildInitialNotification(view: DailyGoalView): { title: string; body: s
     };
   }
 
-  if (view.isUrgentToday && streak > 0) {
+  if (view.isUrgentToday) {
     return {
       title: "Last chance today",
-      body: `Log ${name} now to keep your ${streak}-day streak alive!`,
+      body: streak > 0
+        ? `Log ${name} now to keep your ${streak}-day streak alive!`
+        : `Log ${name} today — it's your last chance to hit this week's quota.`,
+    };
+  }
+
+  if (view.isOverdue) {
+    return {
+      title: "Overdue!",
+      body: `You're behind on ${name} this week — check in today to catch up.`,
     };
   }
 
@@ -143,7 +152,14 @@ async function scheduleInitialNotifications(items: DailyGoalView[], pending: Dai
   await Promise.all(
     pending.map(async (view) => {
       const times = await listGoalNotificationTimes(view.goal.id);
-      const time = times.find((t) => t.dayOfWeek === dayOfWeek) ?? { hour: 9, minute: 0 };
+      // For overdue items on non-scheduled days, use the most recently missed scheduled day's time.
+      const todayTime = times.find((t) => t.dayOfWeek === dayOfWeek);
+      // If today isn't a scheduled day and the user has opted out of off-schedule notifications, skip.
+      if (!todayTime && !view.goal.notifyOffSchedule) return;
+      const overdueTime = view.overdueNotificationDayOfWeek !== null
+        ? times.find((t) => t.dayOfWeek === view.overdueNotificationDayOfWeek)
+        : undefined;
+      const time = todayTime ?? overdueTime ?? { hour: 9, minute: 0 };
       const fireDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), time.hour, time.minute, 0, 0);
       if (fireDate.getTime() <= now.getTime()) return;
 

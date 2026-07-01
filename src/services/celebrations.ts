@@ -71,13 +71,15 @@ export async function detectAndRecordCelebrations(
   }
 
   return Promise.all(
-    types.map((type) =>
-      createCelebration({
-        goalId: goal.id,
-        type,
-        date: entry.date,
-        metadata: type === "streak_milestone" ? { streak: streak.current } : undefined,
-      })
-    )
+    types.map((type) => {
+      let metadata: Record<string, number | string> | undefined;
+      if (type === "streak_milestone") {
+        metadata = { streak: streak.current };
+      } else if (type === "goal_achieved" && goal.targetValue !== undefined) {
+        metadata = { targetValue: goal.targetValue };
+        if (goal.targetDate) metadata.targetDate = goal.targetDate;
+      }
+      return createCelebration({ goalId: goal.id, type, date: entry.date, metadata });
+    })
   );
 }

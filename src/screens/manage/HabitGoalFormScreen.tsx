@@ -143,9 +143,16 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
       setUnitLabel(habit.unitLabel ?? "");
       setCategoryId(habit.categoryId);
 
-      setStartValue(String(goal.startValue));
-      setOpenEnded(goal.targetValue === undefined);
-      if (goal.targetValue !== undefined) setTargetValue(String(goal.targetValue));
+      // After achievement: old target becomes new starting point, new target left blank.
+      if (goal.achievedAt && goal.targetValue !== undefined) {
+        setStartValue(String(goal.targetValue));
+        setOpenEnded(false);
+        setTargetValue("");
+      } else {
+        setStartValue(String(goal.startValue));
+        setOpenEnded(goal.targetValue === undefined);
+        if (goal.targetValue !== undefined) setTargetValue(String(goal.targetValue));
+      }
       setPacingMode(goal.targetDate ? "date" : "step");
       if (goal.targetDate) setTargetDate(new Date(goal.targetDate));
       setCurveType(goal.curveType === "linear" ? "linear" : goal.curveType === "exponential" ? "exponential" : "incremental");
@@ -184,7 +191,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
     scheduledDays.length > 0 &&
     (isBoolean ||
       (!isNaN(parsedStart) &&
-        (!hasTarget || !isNaN(parsedTarget)) &&
+        (!hasTarget || (!isNaN(parsedTarget) && parsedTarget !== parsedStart)) &&
         !isNaN(parsedStep) &&
         (progressionMode === "relative" || parsedStep >= 1)));
 
@@ -209,6 +216,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
       step: parsedStep,
       createdAt: today(),
       active: true,
+      notifyOffSchedule: true,
     };
     const previewHabit: Habit = {
       id: "preview",
@@ -345,7 +353,11 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
 
       <FieldGroup>
         <FieldLabel>Type</FieldLabel>
-        <ChipSelector options={TYPE_OPTIONS} value={type} onChange={setType} />
+        {isEditMode ? (
+          <Text style={styles.readOnlyValue}>{TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type}</Text>
+        ) : (
+          <ChipSelector options={TYPE_OPTIONS} value={type} onChange={setType} />
+        )}
       </FieldGroup>
       {!isBoolean && (
         <FieldGroup>
@@ -506,6 +518,12 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
+  readOnlyValue: {
+    color: theme.text,
+    fontSize: 15,
+    fontWeight: "600",
+    paddingVertical: 4,
+  },
   switchRow: {
     alignItems: "center",
     flexDirection: "row",

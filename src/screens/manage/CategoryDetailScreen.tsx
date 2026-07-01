@@ -107,6 +107,7 @@ export function CategoryDetailScreen({ route, navigation }: Props) {
         renderItem={({ item }) => {
           const goal = goalsByHabit[item.id];
           const isActive = goal ? goal.active : true;
+          const isCompleted = !!goal?.achievedAt;
           return (
             <Pressable
               style={[styles.row, { borderLeftColor: accentColor }]}
@@ -114,11 +115,11 @@ export function CategoryDetailScreen({ route, navigation }: Props) {
               onLongPress={() => setActionSheetHabit(item)}
             >
               <View style={styles.rowHeader}>
-                <View style={[styles.statusDot, isActive ? styles.statusDotActive : styles.statusDotInactive]} />
+                <View style={[styles.statusDot, isCompleted ? styles.statusDotCompleted : isActive ? styles.statusDotActive : styles.statusDotInactive]} />
                 <Text style={styles.rowText}>{item.name}</Text>
               </View>
               <Text style={styles.rowSubtext}>
-                {item.type} · {isActive ? "Active" : "Inactive"}
+                {item.type} · {isCompleted ? "Completed" : isActive ? "Active" : "Inactive"}
               </Text>
             </Pressable>
           );
@@ -205,6 +206,9 @@ const styles = StyleSheet.create({
   },
   statusDotInactive: {
     backgroundColor: theme.textMuted,
+  },
+  statusDotCompleted: {
+    backgroundColor: "#FFD54F",
   },
   rowText: {
     color: theme.text,

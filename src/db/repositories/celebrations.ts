@@ -39,3 +39,16 @@ export async function listCelebrationsByGoal(goalId: string): Promise<Celebratio
   );
   return rows.map(rowToCelebration);
 }
+
+/** All goal_achieved celebrations across every goal ever created for a habit, oldest first. */
+export async function listGoalAchievementsByHabit(habitId: string): Promise<Celebration[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<CelebrationRow>(
+    `SELECT c.* FROM celebrations c
+     JOIN goals g ON c.goal_id = g.id
+     WHERE g.habit_id = ? AND c.type = 'goal_achieved'
+     ORDER BY c.date ASC`,
+    [habitId]
+  );
+  return rows.map(rowToCelebration);
+}

@@ -52,6 +52,8 @@ export interface Goal {
   achievedAt?: string;
   createdAt: string;
   active: boolean;
+  /** When false, overdue/catch-up notifications are suppressed on days outside the scheduled day list. */
+  notifyOffSchedule: boolean;
 }
 
 /** One day's check-in for a goal — at most one per (goalId, date), see `createEntry`. */

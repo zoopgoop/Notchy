@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import Svg, { Circle, Line, Polyline } from "react-native-svg";
+import Svg, { Circle, Line, Polyline, Text as SvgText } from "react-native-svg";
 import { theme } from "../../theme";
 import { formatNumber } from "../../utils/format";
 import { LoggedEntry } from "../../types";
 
 const CHART_HEIGHT = 160;
 const PADDING = 12;
+const PADDING_TOP = 22;
 
 /**
  * Actual-vs-target over time for one goal. Points are spaced evenly by entry order,
@@ -50,10 +51,10 @@ export function ProgressChart({
   const valueRange = maxValue - minValue || 1;
 
   const chartWidth = Math.max(width - PADDING * 2, 0);
-  const chartHeight = CHART_HEIGHT - PADDING * 2;
+  const chartHeight = CHART_HEIGHT - PADDING_TOP - PADDING;
 
   const xFor = (index: number) => PADDING + (index / (totalCount - 1)) * chartWidth;
-  const yFor = (value: number) => PADDING + chartHeight - ((value - minValue) / valueRange) * chartHeight;
+  const yFor = (value: number) => PADDING_TOP + chartHeight - ((value - minValue) / valueRange) * chartHeight;
 
   const actualLine = points.map((p, i) => `${xFor(i)},${yFor(p.actualValue)}`).join(" ");
   const loggedTargetLine = points.map((p, i) => `${xFor(i)},${yFor(p.generatedTarget)}`).join(" ");
@@ -68,22 +69,24 @@ export function ProgressChart({
         ].join(" ")
       : null;
 
+  // Label anchored to the right tip of the target line.
+  const tipTarget =
+    projectedTargets.length > 0
+      ? projectedTargets[projectedTargets.length - 1]
+      : lastLoggedTarget;
+  const tipX = xFor(totalCount - 1);
+  const tipY = tipTarget !== null ? yFor(tipTarget) : null;
+
   return (
     <View>
-      <View style={styles.axisRow}>
-        <Text style={styles.axisLabel}>
-          {formatNumber(maxValue)}
-          {unit}
-        </Text>
-      </View>
       <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
         {width > 0 && (
           <Svg width={width} height={CHART_HEIGHT}>
             <Line
               x1={0}
-              y1={PADDING + chartHeight}
+              y1={PADDING_TOP + chartHeight}
               x2={width}
-              y2={PADDING + chartHeight}
+              y2={PADDING_TOP + chartHeight}
               stroke={theme.border}
               strokeWidth={1}
             />
@@ -91,22 +94,23 @@ export function ProgressChart({
             <Polyline
               points={loggedTargetLine}
               fill="none"
-              stroke={theme.textMuted}
+              stroke={theme.text}
               strokeWidth={1.5}
-              strokeDasharray="5,4"
+              strokeDasharray="6,4"
+              opacity={0.55}
             />
             {/* Projected continuation — lighter to distinguish future from history */}
             {projectedLine && (
               <Polyline
                 points={projectedLine}
                 fill="none"
-                stroke={theme.textMuted}
+                stroke={theme.text}
                 strokeWidth={1}
                 strokeDasharray="3,5"
-                opacity={0.45}
+                opacity={0.25}
               />
             )}
-            <Polyline points={actualLine} fill="none" stroke={color} strokeWidth={2.5} />
+            <Polyline points={actualLine} fill="none" stroke={color} strokeWidth={3} />
             {points.map((p, i) => (
               <Circle
                 key={p.id}
@@ -116,6 +120,18 @@ export function ProgressChart({
                 fill={p.hit ? "#4CAF50" : theme.danger}
               />
             ))}
+            {targetValue !== undefined && tipY !== null && (
+              <SvgText
+                x={tipX}
+                y={tipY - 6}
+                textAnchor="end"
+                fontSize={10}
+                fill={theme.text}
+                opacity={0.55}
+              >
+                {formatNumber(targetValue)}{unit}
+              </SvgText>
+            )}
           </Svg>
         )}
       </View>
@@ -127,9 +143,9 @@ export function ProgressChart({
       </View>
       <View style={styles.legend}>
         <LegendItem swatchColor={color} label="Actual" />
-        <LegendItem swatchColor={theme.textMuted} label="Target" dashed />
+        <LegendItem swatchColor={theme.text} label="Target" dashed />
         {projectedTargets.length > 0 && (
-          <LegendItem swatchColor={theme.textMuted} label="Projected" dashed faded />
+          <LegendItem swatchColor={theme.text} label="Projected" dashed faded />
         )}
         <LegendItem swatchColor="#4CAF50" label="Hit" dot />
         <LegendItem swatchColor={theme.danger} label="Miss" dot />
@@ -172,7 +188,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   axisRow: {
-    alignItems: "flex-end",
+    alignItems: "flex-start",
   },
   axisLabel: {
     color: theme.textMuted,

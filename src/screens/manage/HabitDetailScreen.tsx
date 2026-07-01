@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
-import { FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { Button } from "../../components/ui/Button";
 import { HabitLogCalendar } from "../../components/charts/HabitLogCalendar";
 import { ProgressChart } from "../../components/charts/ProgressChart";
@@ -20,11 +20,13 @@ import {
   getStreak,
   listEntriesByGoal,
   listFreezeWindowsByGoal,
+  listGoalAchievementsByHabit,
   listGoalNotificationTimes,
   listGoalSchedules,
   listSkipsByGoal,
   setGoalActive,
   setGoalNotificationTimes,
+  setGoalNotifyOffSchedule,
   setHabitCategory,
 } from "../../db/repositories";
 import { cancelGoalNotifications } from "../../services/notifications";
@@ -35,7 +37,7 @@ import { useCategories } from "../../hooks/useCategories";
 import { getFreezesEnabled } from "../../services/settings";
 import { forfeitCurrentStreak } from "../../services/streaks";
 import { cardShadow, theme } from "../../theme";
-import { Category, FreezeWindow, Goal, GoalSchedule, Habit, LoggedEntry, SkipLog, Streak } from "../../types";
+import { Category, Celebration, FreezeWindow, Goal, GoalSchedule, Habit, LoggedEntry, SkipLog, Streak } from "../../types";
 import { unitSuffix } from "../../utils/format";
 import { ManageStackParamList, HomeStackParamList } from "../../navigation/types";
 
@@ -54,11 +56,13 @@ export function HabitDetailScreen({ route, navigation }: Props) {
   const [entries, setEntries] = useState<LoggedEntry[]>([]);
   const [skips, setSkips] = useState<SkipLog[]>([]);
   const [schedules, setSchedules] = useState<GoalSchedule[]>([]);
+  const [achievements, setAchievements] = useState<Celebration[]>([]);
   const { categories, refetch: refetchCategories } = useCategories();
 
   const [scheduleModalVisible, setScheduleModalVisible] = useState(false);
   const [editedDays, setEditedDays] = useState<number[]>([]);
   const [editedTimes, setEditedTimes] = useState<Record<number, DayTime>>({});
+  const [editedNotifyOffSchedule, setEditedNotifyOffSchedule] = useState(true);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [freezesEnabled, setFreezesEnabled] = useState(true);
 
@@ -78,18 +82,20 @@ export function HabitDetailScreen({ route, navigation }: Props) {
       return;
     }
 
-    const [loadedStreak, loadedFreezes, loadedEntries, loadedSkips, loadedSchedules] = await Promise.all([
+    const [loadedStreak, loadedFreezes, loadedEntries, loadedSkips, loadedSchedules, loadedAchievements] = await Promise.all([
       getStreak(loadedGoal.id),
       listFreezeWindowsByGoal(loadedGoal.id),
       listEntriesByGoal(loadedGoal.id),
       listSkipsByGoal(loadedGoal.id),
       listGoalSchedules(loadedGoal.id),
+      listGoalAchievementsByHabit(habitId),
     ]);
     setStreak(loadedStreak);
     setFreezeWindows(loadedFreezes);
     setEntries(loadedEntries);
     setSkips(loadedSkips);
     setSchedules(loadedSchedules);
+    setAchievements(loadedAchievements);
   }, [habitId]);
 
   useEffect(() => {
@@ -125,6 +131,7 @@ export function HabitDetailScreen({ route, navigation }: Props) {
     setEditedDays(currentDays);
     const savedTimes = await listGoalNotificationTimes(goal.id);
     setEditedTimes(notificationTimesToMap(savedTimes));
+    setEditedNotifyOffSchedule(goal.notifyOffSchedule);
     setScheduleModalVisible(true);
   }
 
@@ -134,8 +141,11 @@ export function HabitDetailScreen({ route, navigation }: Props) {
 
   async function handleSaveSchedule() {
     if (!goal || editedDays.length === 0) return;
-    await createGoalSchedule(goal.id, today(), editedDays);
-    await setGoalNotificationTimes(goal.id, notificationTimesFromMap(goal.id, editedDays, editedTimes));
+    await Promise.all([
+      createGoalSchedule(goal.id, today(), editedDays),
+      setGoalNotificationTimes(goal.id, notificationTimesFromMap(goal.id, editedDays, editedTimes)),
+      setGoalNotifyOffSchedule(goal.id, editedNotifyOffSchedule),
+    ]);
     setScheduleModalVisible(false);
     refetch();
   }
@@ -203,7 +213,22 @@ export function HabitDetailScreen({ route, navigation }: Props) {
               />
             </FieldGroup>
 
-            {goal?.achievedAt && <Text style={styles.achieved}>✓ Achieved {goal.achievedAt}</Text>}
+            {achievements.length > 0 && (
+              <>
+                <Text style={styles.sectionLabel}>Achievements</Text>
+                {achievements.map((a) => {
+                  const targetVal = a.metadata?.targetValue;
+                  const targetDate = a.metadata?.targetDate;
+                  const goalPart = targetVal !== undefined ? ` ${targetVal}${unit}` : "";
+                  const datePart = targetDate ? ` (target: ${targetDate})` : "";
+                  return (
+                    <Text key={a.id} style={styles.achieved}>
+                      ✓ Reached{goalPart} on {a.date}{datePart}
+                    </Text>
+                  );
+                })}
+              </>
+            )}
             {goal && streak && (
               <Text style={styles.streak}>
                 Streak: {streak.current} (best {streak.longest}) · {weeklySkipLimitFor(currentDays)} skips/fortnight
@@ -303,6 +328,16 @@ export function HabitDetailScreen({ route, navigation }: Props) {
                 />
               </View>
               <HintText>Reminder times apply right away. Tap a time above to change it.</HintText>
+              <View style={styles.offScheduleRow}>
+                <View style={styles.offScheduleText}>
+                  <Text style={styles.offScheduleLabel}>Notify on non-scheduled days</Text>
+                  <Text style={styles.offScheduleHint}>Send overdue reminders even on days not in your schedule</Text>
+                </View>
+                <Switch
+                  value={editedNotifyOffSchedule}
+                  onValueChange={setEditedNotifyOffSchedule}
+                />
+              </View>
               <View style={styles.modalButtonSpacer} />
               <Button title="Save" onPress={handleSaveSchedule} disabled={editedDays.length === 0} />
               <View style={styles.spacer} />
@@ -434,5 +469,24 @@ const styles = StyleSheet.create({
   },
   modalButtonSpacer: {
     height: 16,
+  },
+  offScheduleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12,
+  },
+  offScheduleText: {
+    flex: 1,
+  },
+  offScheduleLabel: {
+    color: theme.text,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  offScheduleHint: {
+    color: theme.textMuted,
+    fontSize: 12,
+    marginTop: 2,
   },
 });

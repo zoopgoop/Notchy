@@ -3,42 +3,32 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, View } from "react-native";
 import { Button } from "../../components/ui/Button";
-import { CelebrationOverlay } from "../../components/celebration/CelebrationOverlay";
-import { EncouragementToast } from "../../components/celebration/EncouragementToast";
 import { FieldGroup, FieldLabel, TextField } from "../../components/ui/FormField";
 import { PageTitle, Screen } from "../../components/ui/Screen";
 import { getHabit, getGoal, listEntriesByGoal, updateGoal } from "../../db/repositories";
-import { daysBetween, today } from "../../engine/dateUtils";
-import { useTags } from "../../hooks/useTags";
+import { today } from "../../engine/dateUtils";
 import { pickPrimaryCelebration } from "../../services/celebrations";
 import { getDailyStatus, logGoalEntry } from "../../services/dailyStatus";
 import { detectPacingMismatch, PacingMismatch } from "../../services/pacingAdjustment";
+import { setPendingCelebration, setPendingEncouragement } from "../../services/pendingCelebration";
 import { theme } from "../../theme";
-import { Celebration, Goal, Habit, Tag } from "../../types";
+import { Goal, Habit } from "../../types";
 import { unitSuffix } from "../../utils/format";
 import { HomeStackParamList } from "../../navigation/types";
-import { HabitAchievedPrompt } from "./HabitAchievedPrompt";
 import { PacingAdjustmentPrompt } from "./PacingAdjustmentPrompt";
-import { TagPicker } from "./TagPicker";
 
 type Props = NativeStackScreenProps<HomeStackParamList, "LogEntry">;
 
 export function LogEntryScreen({ route, navigation }: Props) {
   const { goalId } = route.params;
-  const { tags, refetch: refetchTags } = useTags();
 
   const [goal, setGoal] = useState<Goal | null>(null);
   const [habit, setHabit] = useState<Habit | null>(null);
   const [target, setTarget] = useState<number | null>(null);
   const [actualValue, setActualValue] = useState("");
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [celebration, setCelebration] = useState<Celebration | null>(null);
-  const [showAchievedPrompt, setShowAchievedPrompt] = useState(false);
-  const [daysEarly, setDaysEarly] = useState<number | null>(null);
   const [pacingMismatch, setPacingMismatch] = useState<PacingMismatch | null>(null);
   const [isFrozen, setIsFrozen] = useState(false);
-  const [showEncouragement, setShowEncouragement] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -62,19 +52,7 @@ export function LogEntryScreen({ route, navigation }: Props) {
     })();
   }, [goalId]);
 
-  function toggleTag(tagId: string) {
-    setSelectedTagIds((prev) =>
-      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
-    );
-  }
-
-  function handleTagCreated(tag: Tag) {
-    refetchTags();
-    setSelectedTagIds((prev) => [...prev, tag.id]);
-  }
-
   const isBoolean = habit?.type === "boolean";
-  // Numeric logging (reps, sessions, etc.) is whole-number-only — see progression.ts.
   const parsedValue = parseInt(actualValue, 10);
   const canSave =
     !saving &&
@@ -83,7 +61,6 @@ export function LogEntryScreen({ route, navigation }: Props) {
     habit !== null &&
     (isBoolean || !isNaN(parsedValue));
 
-  /** Shared tail of every "done logging" path — checked regardless of whether today hit or missed. */
   async function checkPacingAndFinish() {
     if (goal && habit && goal.targetDate) {
       const entries = await listEntriesByGoal(goal.id);
@@ -108,18 +85,19 @@ export function LogEntryScreen({ route, navigation }: Props) {
         date: today(),
         actualValue: value,
         generatedTarget: effectiveTarget,
-        tagIds: selectedTagIds,
+        tagIds: [],
       });
 
       const primary = pickPrimaryCelebration(celebrations);
       if (primary) {
-        setCelebration(primary);
+        setPendingCelebration({ celebration: primary, habitName: habit.name, goalId: goal.id, targetDate: goal.targetDate });
+        navigation.goBack();
         return;
       }
 
-      // Missed today's number but still logged — the streak doesn't care, just acknowledge it kindly.
       if (!entry.hit) {
-        setShowEncouragement(true);
+        setPendingEncouragement();
+        navigation.goBack();
         return;
       }
 
@@ -127,14 +105,6 @@ export function LogEntryScreen({ route, navigation }: Props) {
     } finally {
       setSaving(false);
     }
-  }
-
-  function handleEditAndContinue() {
-    navigation.replace("HabitGoalForm", { editGoalId: goal!.id });
-  }
-
-  function handleMarkComplete() {
-    navigation.goBack();
   }
 
   async function handlePacingAdjustDate(newDate: string) {
@@ -172,64 +142,20 @@ export function LogEntryScreen({ route, navigation }: Props) {
         <>
           {!isBoolean && (
             <FieldGroup>
-              <FieldLabel>{target !== null ? `Daily target: ${target}${unit}` : "Value"}</FieldLabel>
+              <FieldLabel>{target !== null ? `Today's target: ${target}${unit}` : "Value"}</FieldLabel>
               <TextField
                 placeholder={`e.g. ${target ?? ""}`}
                 keyboardType="number-pad"
                 value={actualValue}
-                onChangeText={setActualValue}
+                onChangeText={(text) => setActualValue(text.replace(/[^0-9]/g, ""))}
                 autoFocus
               />
             </FieldGroup>
           )}
-
-          <FieldGroup>
-            <FieldLabel>Tags (optional)</FieldLabel>
-            <TagPicker
-              tags={tags}
-              selectedIds={selectedTagIds}
-              onToggle={toggleTag}
-              onTagCreated={handleTagCreated}
-            />
-          </FieldGroup>
         </>
       )}
 
       <Button title="Save" onPress={handleSave} disabled={!canSave} />
-
-      {celebration && (
-        <CelebrationOverlay
-          celebration={celebration}
-          habitName={habit.name}
-          onDismiss={() => {
-            setCelebration(null);
-            if (celebration.type === "goal_achieved") {
-              setDaysEarly(goal.targetDate ? daysBetween(today(), goal.targetDate) : null);
-              setShowAchievedPrompt(true);
-            } else {
-              checkPacingAndFinish();
-            }
-          }}
-        />
-      )}
-
-      {showEncouragement && (
-        <EncouragementToast
-          onDismiss={() => {
-            setShowEncouragement(false);
-            checkPacingAndFinish();
-          }}
-        />
-      )}
-
-      {showAchievedPrompt && (
-        <HabitAchievedPrompt
-          habitName={habit.name}
-          daysEarly={daysEarly}
-          onEditAndContinue={handleEditAndContinue}
-          onMarkComplete={handleMarkComplete}
-        />
-      )}
 
       {pacingMismatch && goal.targetDate && goal.targetValue !== undefined && (
         <PacingAdjustmentPrompt

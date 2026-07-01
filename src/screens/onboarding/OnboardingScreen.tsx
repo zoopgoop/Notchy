@@ -14,7 +14,7 @@ const INFO_STEPS = [
   },
   {
     title: "Scheduled days are just reminders",
-    body: "Pick which days you want to be reminded on — but what actually keeps your streak alive is getting that many check-ins in somewhere across the week, on whichever days suit you. Missing a specific scheduled day doesn't matter as long as the week's total comes in. Hitting the exact daily number doesn't matter either — showing up is what counts.",
+    body: "Pick which days you want to be reminded on — but what actually keeps your streak alive is getting that many check-ins in somewhere across the week, on whichever days suit you. Missing a specific scheduled day doesn't matter as long as the week's total comes in. Hitting the exact daily target doesn't matter either — showing up is what counts.",
   },
   {
     title: "Protect your streak the right way",

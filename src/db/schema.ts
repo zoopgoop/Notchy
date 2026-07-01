@@ -231,6 +231,11 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_goal_notification_times_goal ON goal_notification_times(goal_id);
   `,
+  `
+  -- Per-goal toggle: whether to send notifications on days that aren't in the scheduled
+  -- day list (e.g. overdue reminders that fall on non-scheduled days). On by default.
+  ALTER TABLE goals ADD COLUMN notify_off_schedule INTEGER NOT NULL DEFAULT 1;
+  `,
 ];
 
 export const BUILT_IN_TAGS = ["Tired", "Sore"];

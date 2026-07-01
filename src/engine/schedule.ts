@@ -156,11 +156,11 @@ export function currentWeekStatus(
   };
 }
 
-/** The next date (today or later, within the rest of this week) that's a reminder day — purely informational now. */
-export function nextScheduledReminder(schedules: GoalSchedule[], fromDate: string, daysRemaining: number): string | null {
-  const weekEnd = addDays(fromDate, daysRemaining - 1);
+/** The next scheduled reminder day on or after `fromDate`, looking up to 14 days ahead. */
+export function nextScheduledReminder(schedules: GoalSchedule[], fromDate: string): string | null {
+  const horizon = addDays(fromDate, 13);
   let cursor = fromDate;
-  while (cursor <= weekEnd) {
+  while (cursor <= horizon) {
     if (scheduledDaysAsOf(schedules, cursor).includes(getWeekday(cursor))) return cursor;
     cursor = addDays(cursor, 1);
   }
