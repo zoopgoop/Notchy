@@ -84,7 +84,12 @@ async function loadDailyGoalView(goal: Goal, date: string): Promise<DailyGoalVie
   const skipsNeededToSave = isCrisis ? weekStatus.stillNeeded - weekStatus.daysRemaining : 0;
 
   // How many scheduled days have elapsed so far this week (today inclusive if scheduled).
-  const expectedByNow = countScheduledDaysBetween(schedules, addDays(weekStatus.weekStart, -1), date);
+  // Trim to createdAt so a habit created mid-week isn't immediately flagged as behind
+  // for scheduled days that existed before the habit did.
+  const createdAt = goal.createdAt.slice(0, 10);
+  const effectiveWeekStart = createdAt > weekStatus.weekStart ? createdAt : weekStatus.weekStart;
+  // Count only past scheduled days (not today) — being behind on today is isUrgentToday, not overdue.
+  const expectedByNow = countScheduledDaysBetween(schedules, addDays(effectiveWeekStart, -1), addDays(date, -1));
   const alreadyDone = status.kind === "logged" || status.kind === "skipped";
   const isOverdue = !alreadyDone && !weekStatus.exempt && !isCrisis && weekStatus.credited < expectedByNow;
 

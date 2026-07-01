@@ -1,0 +1,9 @@
+{
+  "name": "countdown-notification",
+  "version": "1.0.0",
+  "description": "Native Android countdown notification with live timer",
+  "main": "index.ts",
+  "peerDependencies": {
+    "expo": "*"
+  }
+}

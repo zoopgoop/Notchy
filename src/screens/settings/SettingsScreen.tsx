@@ -53,8 +53,8 @@ export function SettingsScreen() {
 
       <FieldGroup>
         <HintText>
-          Reminders run automatically from 10:30pm if anything's still pending, every 30 minutes
-          until midnight — no setup needed.
+          Reminders run automatically from 10:30pm if anything's still pending — at 10:30pm, 11pm,
+          11:30pm, and 11:50pm — no setup needed.
         </HintText>
       </FieldGroup>
 

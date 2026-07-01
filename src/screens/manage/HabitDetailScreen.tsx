@@ -36,7 +36,7 @@ import { scheduledDaysAsOf, weeklySkipLimitFor } from "../../engine/schedule";
 import { useCategories } from "../../hooks/useCategories";
 import { getFreezesEnabled } from "../../services/settings";
 import { forfeitCurrentStreak } from "../../services/streaks";
-import { cardShadow, theme } from "../../theme";
+import { cardShadow, theme, UNCATEGORIZED_COLOR } from "../../theme";
 import { Category, Celebration, FreezeWindow, Goal, GoalSchedule, Habit, LoggedEntry, SkipLog, Streak } from "../../types";
 import { unitSuffix } from "../../utils/format";
 import { ManageStackParamList, HomeStackParamList } from "../../navigation/types";
@@ -245,7 +245,7 @@ export function HabitDetailScreen({ route, navigation }: Props) {
                     entries={entries}
                     projectedTargets={projectedTargets}
                     targetValue={goal.targetValue}
-                    color={theme.primary}
+                    color={categories.find((c) => c.id === habit.categoryId)?.color ?? UNCATEGORIZED_COLOR}
                     unit={unit}
                   />
                 )}
@@ -316,8 +316,7 @@ export function HabitDetailScreen({ route, navigation }: Props) {
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>Edit Schedule</Text>
               <HintText>
-                These are just reminder days — what actually keeps your streak alive is getting that
-                many check-ins somewhere in the week, on whichever days you like. Changes apply right away.
+                These are your check-in days — when you'll be reminded. You can log on any day and it still counts toward your weekly quota. Changes apply right away.
               </HintText>
               <View style={styles.modalPickerSpacer}>
                 <ScheduleDayPicker

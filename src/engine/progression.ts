@@ -102,8 +102,8 @@ export function generateNextTarget(
   const lastEntry = entries[entries.length - 1];
 
   if (!lastEntry) {
-    const target = computeBaseTarget(goal, schedules, direction, goal.startValue, goal.createdAt, today, entries);
-    return { target: clampTowardTarget(target, goal, direction), reason: "initial" };
+    // First check-in always targets the starting value — no progression on day one.
+    return { target: clampTowardTarget(goal.startValue, goal, direction), reason: "initial" };
   }
 
   if (lastEntry.hit) {

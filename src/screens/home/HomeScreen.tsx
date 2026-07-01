@@ -83,7 +83,7 @@ function formatNextDue(nextDue: string | null): string | null {
 
 export function HomeScreen({ navigation }: Props) {
   const { items, refetch } = useDailyGoals();
-  const { categories } = useCategories();
+  const { categories, refetch: refetchCategories } = useCategories();
   const [name, setName] = useState<string | null>(null);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
   const [actionSheetView, setActionSheetView] = useState<DailyGoalView | null>(null);
@@ -116,6 +116,7 @@ export function HomeScreen({ navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       refetch();
+      refetchCategories();
       getUserName().then(setName);
       loadWeeklySummary().then(setWeeklySummary);
       loadAchieved();
@@ -126,7 +127,7 @@ export function HomeScreen({ navigation }: Props) {
       if (pending) {
         setCelebrationState({ celebration: pending.celebration, habitName: pending.habitName, goalId: pending.goalId, targetDate: pending.targetDate });
       }
-    }, [refetch, loadAchieved])
+    }, [refetch, refetchCategories, loadAchieved])
   );
 
   const filteredItems = useMemo(() => {
@@ -527,12 +528,19 @@ function GoalCard({
     isUrgentToday,
     isOverdue,
     isCrisis,
+    dueToday,
     nextTarget,
   } = view;
   const unit = unitSuffix(habit.unitLabel);
   const color = category?.color ?? UNCATEGORIZED_COLOR;
   const statusColor =
-    status.kind === "logged" ? "#4CAF50" : isUrgentToday || isCrisis ? theme.danger : theme.warning;
+    status.kind === "logged"
+      ? "#4CAF50"
+      : isCrisis || isUrgentToday || isOverdue
+        ? theme.danger
+        : dueToday
+          ? theme.warning
+          : theme.textMuted;
 
   const [expanded, setExpanded] = useState(false);
   const [entries, setEntries] = useState<LoggedEntry[] | null>(null);

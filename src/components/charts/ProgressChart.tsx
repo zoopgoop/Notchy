@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Line, Polyline, Text as SvgText } from "react-native-svg";
 import { theme } from "../../theme";
@@ -30,14 +30,22 @@ export function ProgressChart({
   unit: string;
 }) {
   const [width, setWidth] = useState(0);
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const points = entries.filter(
     (e): e is LoggedEntry & { actualValue: number } => e.actualValue !== undefined
   );
 
-  if (points.length < 2 && projectedTargets.length === 0) {
+  if (points.length === 0 && projectedTargets.length === 0) {
     return (
-      <Text style={styles.empty}>Log a few more entries to see your progress chart here.</Text>
+      <Text style={styles.empty}>Log your first entry to start seeing your progress chart.</Text>
     );
+  }
+
+  function handleDotPress(i: number) {
+    setSelectedIdx(i);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setSelectedIdx(null), 2500);
   }
 
   // X-axis spans all sessions — logged on the left, projected on the right.
@@ -59,7 +67,8 @@ export function ProgressChart({
   const actualLine = points.map((p, i) => `${xFor(i)},${yFor(p.actualValue)}`).join(" ");
   const loggedTargetLine = points.map((p, i) => `${xFor(i)},${yFor(p.generatedTarget)}`).join(" ");
 
-  // Projected line starts from the last logged entry's target so the arc flows continuously.
+  // Projected line extends from the end of the target line — it's a continuation of
+  // where targets will go, not the actual values.
   const lastLoggedTarget = points.length > 0 ? points[points.length - 1].generatedTarget : null;
   const projectedLine =
     projectedTargets.length > 0 && lastLoggedTarget !== null
@@ -116,10 +125,23 @@ export function ProgressChart({
                 key={p.id}
                 cx={xFor(i)}
                 cy={yFor(p.actualValue)}
-                r={3.5}
+                r={i === points.length - 1 ? 5 : 3.5}
                 fill={p.hit ? "#4CAF50" : theme.danger}
+                onPress={() => handleDotPress(i)}
               />
             ))}
+            {selectedIdx !== null && points[selectedIdx] && (
+              <SvgText
+                x={Math.min(Math.max(xFor(selectedIdx), PADDING + 16), (width || 0) - PADDING - 16)}
+                y={yFor(points[selectedIdx].actualValue) - 8}
+                textAnchor="middle"
+                fontSize={11}
+                fill={theme.text}
+                fontWeight="600"
+              >
+                {formatNumber(points[selectedIdx].actualValue)}{unit}
+              </SvgText>
+            )}
             {targetValue !== undefined && tipY !== null && (
               <SvgText
                 x={tipX}

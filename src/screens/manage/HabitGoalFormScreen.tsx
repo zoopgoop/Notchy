@@ -494,8 +494,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
           onChangeTime={handleChangeNotificationTime}
         />
         <HintText>
-          These are just reminder days — what actually keeps your streak alive is getting that
-          many check-ins somewhere in the week, on whichever days you like. Tap a time to change it.
+          These are your check-in days — when you'll be reminded. You can log on any day and it still counts toward your weekly quota.
         </HintText>
       </FieldGroup>
 

@@ -3,6 +3,7 @@ import { Platform } from "react-native";
 import type { DailyGoalView } from "./dailyGoals";
 import { listGoalNotificationTimes } from "../db/repositories";
 import { formatNumber, unitSuffix } from "../utils/format";
+import CountdownNotification from "countdown-notification";
 
 const CHANNEL_ID = "daily-targets";
 
@@ -11,6 +12,7 @@ const COUNTDOWN_SLOTS = [
   { hour: 22, minute: 30, minutesLeft: 90 },
   { hour: 23, minute: 0, minutesLeft: 60 },
   { hour: 23, minute: 30, minutesLeft: 30 },
+  { hour: 23, minute: 50, minutesLeft: 10 },
 ];
 
 function countdownId(index: number): string {
@@ -42,9 +44,11 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 }
 
 async function scheduleCountdownNotifications(pending: DailyGoalView[]): Promise<void> {
-  await Promise.all(
-    COUNTDOWN_SLOTS.map((_, i) => Notifications.cancelScheduledNotificationAsync(countdownId(i)).catch(() => {}))
-  );
+  // Cancel any previously scheduled slots (both native and legacy expo-notifications).
+  COUNTDOWN_SLOTS.forEach((_, i) => {
+    CountdownNotification.cancelCountdownNotification(i);
+    Notifications.cancelScheduledNotificationAsync(countdownId(i)).catch(() => {});
+  });
   if (pending.length === 0) return;
 
   const urgentCount = pending.filter((item) => item.isUrgentToday).length;
@@ -57,20 +61,21 @@ async function scheduleCountdownNotifications(pending: DailyGoalView[]): Promise
         : `Complete a check-in on ${urgentCount} habits today to keep their streaks alive!`
       : `${pending.length} ${pending.length === 1 ? "goal" : "goals"} still need logging before today resets.`;
 
-  await Promise.all(
-    COUNTDOWN_SLOTS.map(async (slot, i) => {
-      const fireDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), slot.hour, slot.minute, 0, 0);
-      if (fireDate.getTime() <= now.getTime()) return;
-      await Notifications.scheduleNotificationAsync({
-        identifier: countdownId(i),
-        content: {
-          title: `${slot.minutesLeft} minutes left today`,
-          body,
-        },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireDate },
-      });
-    })
-  );
+  // Midnight tonight — the timer counts down to this moment.
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+
+  COUNTDOWN_SLOTS.forEach((slot, i) => {
+    const fireDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), slot.hour, slot.minute, 0, 0);
+    if (fireDate.getTime() <= now.getTime()) return;
+    CountdownNotification.scheduleCountdownNotification({
+      notificationId: i,
+      hour: slot.hour,
+      minute: slot.minute,
+      targetEpochMs: midnight.getTime(),
+      title: `${slot.minutesLeft} minutes left today`,
+      body,
+    });
+  });
 }
 
 function initialNotificationId(goalId: string): string {
