@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AppState } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -7,7 +8,7 @@ import { RootNavigator } from "./src/navigation/RootNavigator";
 import { IntroScreen } from "./src/screens/onboarding/IntroScreen";
 import { OnboardingScreen } from "./src/screens/onboarding/OnboardingScreen";
 import { registerBackgroundNotificationTask } from "./src/services/backgroundTask";
-import { configureNotifications, requestNotificationPermissions } from "./src/services/notifications";
+import { configureNotifications, dismissAllActiveNotifications, requestExactAlarmPermission, requestNotificationPermissions } from "./src/services/notifications";
 import { hasSeenOnboarding } from "./src/services/settings";
 
 export default function App() {
@@ -16,12 +17,21 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
-    configureNotifications().then(requestNotificationPermissions);
+    configureNotifications()
+      .then(requestNotificationPermissions)
+      .then(() => requestExactAlarmPermission());
     registerBackgroundNotificationTask();
     hasSeenOnboarding().then((seen) => {
       setShowOnboarding(!seen);
       setReady(true);
     });
+
+    // Clear all notifications whenever the user opens the app.
+    dismissAllActiveNotifications();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") dismissAllActiveNotifications();
+    });
+    return () => sub.remove();
   }, []);
 
   if (!ready) {

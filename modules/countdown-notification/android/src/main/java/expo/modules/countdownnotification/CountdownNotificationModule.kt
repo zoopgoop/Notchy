@@ -1,6 +1,7 @@
 package expo.modules.countdownnotification
 
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -20,7 +21,6 @@ class CountdownNotificationModule : Module() {
         putExtra("notificationId", slot.notificationId)
         putExtra("targetEpochMs", slot.targetEpochMs)
         putExtra("title", slot.title)
-        putExtra("body", slot.body)
       }
 
       val pendingIntent = PendingIntent.getBroadcast(
@@ -46,6 +46,23 @@ class CountdownNotificationModule : Module() {
         alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireTime, pendingIntent)
       } else {
         alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireTime, pendingIntent)
+      }
+    }
+
+    Function("dismissCountdownNotification") {
+      val context = appContext.reactContext ?: return@Function null
+      val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      manager.cancelAll()
+      null
+    }
+
+    Function("canScheduleExactAlarms") {
+      val context = appContext.reactContext ?: return@Function false
+      val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        alarmManager.canScheduleExactAlarms()
+      } else {
+        true
       }
     }
 

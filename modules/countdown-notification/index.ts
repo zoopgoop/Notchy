@@ -6,12 +6,13 @@ export type CountdownSlot = {
   minute: number;
   targetEpochMs: number;
   title: string;
-  body: string;
 };
 
 interface CountdownNotificationModule {
   scheduleCountdownNotification(slot: CountdownSlot): void;
   cancelCountdownNotification(notificationId: number): void;
+  dismissCountdownNotification(): void;
+  canScheduleExactAlarms(): boolean;
 }
 
 // requireNativeModule throws if the native side isn't found (e.g. in tests).

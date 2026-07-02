@@ -9,5 +9,4 @@ class CountdownSlotRecord : Record {
   @Field val minute: Int = 0
   @Field val targetEpochMs: Long = 0L
   @Field val title: String = ""
-  @Field val body: String = ""
 }

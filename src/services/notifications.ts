@@ -3,7 +3,12 @@ import { Platform } from "react-native";
 import type { DailyGoalView } from "./dailyGoals";
 import { listGoalNotificationTimes } from "../db/repositories";
 import { formatNumber, unitSuffix } from "../utils/format";
-import CountdownNotification from "countdown-notification";
+let CountdownNotification: typeof import("countdown-notification").default | null = null;
+try {
+  CountdownNotification = require("countdown-notification").default;
+} catch {
+  // Native module unavailable (e.g. running in test environment) — fall back to expo-notifications.
+}
 
 const CHANNEL_ID = "daily-targets";
 
@@ -43,38 +48,84 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   return status === "granted";
 }
 
+/** Shows an explanation then opens Alarms & Reminders settings on Android 12+ so the user can grant exact alarm permission. */
+export async function requestExactAlarmPermission(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  const cdn = CountdownNotification;
+  if (cdn?.canScheduleExactAlarms()) return;
+  const { Alert, Linking } = await import("react-native");
+  Alert.alert(
+    "Enable exact reminders",
+    "Notchy needs permission to fire reminders at precise times.",
+    [
+      { text: "Not now", style: "cancel" },
+      {
+        text: "Allow",
+        onPress: async () => {
+          try {
+            await Linking.sendIntent("android.settings.REQUEST_SCHEDULE_EXACT_ALARM");
+          } catch {
+            // Older Android — permission is auto-granted, nothing to do.
+          }
+        },
+      },
+    ]
+  );
+}
+
 async function scheduleCountdownNotifications(pending: DailyGoalView[]): Promise<void> {
-  // Cancel any previously scheduled slots (both native and legacy expo-notifications).
+  // Cancel all previously scheduled slots.
   COUNTDOWN_SLOTS.forEach((_, i) => {
-    CountdownNotification.cancelCountdownNotification(i);
+    CountdownNotification?.cancelCountdownNotification(i);
     Notifications.cancelScheduledNotificationAsync(countdownId(i)).catch(() => {});
   });
   if (pending.length === 0) return;
 
-  const urgentCount = pending.filter((item) => item.isUrgentToday).length;
   const now = new Date();
 
-  const body =
+  // Pick only the next upcoming slot — the Chronometer ticks by itself until midnight so we
+  // don't need to re-fire. If the user dismisses and opens the app, scheduling runs again and
+  // picks whichever slot is next at that point.
+  const slotIndex = COUNTDOWN_SLOTS.findIndex((slot) => {
+    const fireDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), slot.hour, slot.minute, 0, 0);
+    return fireDate.getTime() > now.getTime();
+  });
+  if (slotIndex === -1) return;
+
+  const slot = COUNTDOWN_SLOTS[slotIndex];
+  const fireDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), slot.hour, slot.minute, 0, 0);
+
+  const urgentCount = pending.filter((item) => item.isUrgentToday).length;
+  const n = pending.length;
+  const title =
     urgentCount > 0
       ? urgentCount === 1
-        ? "Complete a check-in today to keep your streak alive!"
-        : `Complete a check-in on ${urgentCount} habits today to keep their streaks alive!`
-      : `${pending.length} ${pending.length === 1 ? "goal" : "goals"} still need logging before today resets.`;
+        ? "Complete a check-in to keep your streak alive!"
+        : `Complete check-ins on ${urgentCount} habits to keep their streaks alive!`
+      : `${n} ${n === 1 ? "habit" : "habits"} still ${n === 1 ? "needs" : "need"} logging tonight!`;
 
-  // Midnight tonight — the timer counts down to this moment.
   const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
 
-  COUNTDOWN_SLOTS.forEach((slot, i) => {
-    const fireDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), slot.hour, slot.minute, 0, 0);
-    if (fireDate.getTime() <= now.getTime()) return;
-    CountdownNotification.scheduleCountdownNotification({
-      notificationId: i,
-      hour: slot.hour,
-      minute: slot.minute,
-      targetEpochMs: midnight.getTime(),
-      title: `${slot.minutesLeft} minutes left today`,
-      body,
-    });
+  const cdn = CountdownNotification;
+  if (cdn) {
+    try {
+      cdn.scheduleCountdownNotification({
+        notificationId: slotIndex,
+        hour: slot.hour,
+        minute: slot.minute,
+        targetEpochMs: midnight.getTime(),
+        title,
+      });
+      return;
+    } catch (e) {
+      console.warn("CountdownNotification native module failed, falling back to expo-notifications:", e);
+    }
+  }
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: countdownId(slotIndex),
+    content: { title, body: `${slot.minutesLeft} minutes left until midnight.` },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: fireDate },
   });
 }
 
@@ -178,6 +229,12 @@ async function scheduleInitialNotifications(items: DailyGoalView[], pending: Dai
   );
 }
 
+/** Clears all active Notchy notifications from the shade when the user opens the app. */
+export function dismissAllActiveNotifications(): void {
+  CountdownNotification?.dismissCountdownNotification();
+  Notifications.dismissAllNotificationsAsync().catch(() => {});
+}
+
 /** Cancels the initial reminder for a specific goal — call this before deleting a goal or habit so the OS notification doesn't outlive the DB record. */
 export async function cancelGoalNotifications(goalId: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(initialNotificationId(goalId)).catch(() => {});
@@ -189,6 +246,11 @@ export async function cancelGoalNotifications(goalId: string): Promise<void> {
  * after a goal gets logged or skipped.
  */
 export async function scheduleAllDailyNotifications(items: DailyGoalView[]): Promise<void> {
-  const pending = items.filter((item) => item.status.kind === "pending" && item.dueToday);
-  await Promise.all([scheduleCountdownNotifications(pending), scheduleInitialNotifications(items, pending)]);
+  const pendingDueToday = items.filter((item) => item.status.kind === "pending" && item.dueToday);
+  // Overdue items that aren't scheduled today — eligible for off-schedule reminders but never a countdown.
+  const pendingOverdue = items.filter((item) => item.status.kind === "pending" && !item.dueToday && item.isOverdue);
+  await Promise.all([
+    scheduleCountdownNotifications(pendingDueToday),
+    scheduleInitialNotifications(items, [...pendingDueToday, ...pendingOverdue]),
+  ]);
 }
