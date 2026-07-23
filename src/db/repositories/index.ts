@@ -10,3 +10,5 @@ export * from "./freezeWindows";
 export * from "./celebrations";
 export * from "./streaks";
 export * from "./settings";
+export * from "./achievements";
+export * from "./achievementStats";

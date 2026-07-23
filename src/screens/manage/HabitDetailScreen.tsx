@@ -111,8 +111,11 @@ export function HabitDetailScreen({ route, navigation }: Props) {
   );
 
   const currentDays = useMemo(() => scheduledDaysAsOf(schedules, today()), [schedules]);
+  // No "next" target once a goal is achieved — projecting forward from an already-hit
+  // target just extrapolates the old curve into nonsense (e.g. sliding back toward
+  // startValue), not a real forecast.
   const projectedTargets = useMemo(
-    () => (goal && habit ? projectFutureTargets(goal, habit, schedules, entries) : []),
+    () => (goal && habit && !goal.achievedAt ? projectFutureTargets(goal, habit, schedules, entries) : []),
     [goal, habit, schedules, entries]
   );
 

@@ -109,6 +109,12 @@ export interface Celebration {
   metadata?: Record<string, number | string>;
 }
 
+/** An earned app-wide achievement badge — see services/achievements.ts's static catalog for what `key` can be. */
+export interface Achievement {
+  key: string;
+  earnedAt: string;
+}
+
 /** Current and longest consecutive-week-quota run for a goal — one row per goal, see `recomputeStreak`. */
 export interface Streak {
   goalId: string;

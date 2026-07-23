@@ -2,7 +2,7 @@ import { isHit, requireDirection } from "../engine/curves";
 import { Celebration, CelebrationType, Habit, Goal, LoggedEntry, Streak } from "../types";
 import { createCelebration, listEntriesByGoal, markGoalAchieved } from "../db/repositories";
 
-const STREAK_MILESTONES = [7, 30, 100];
+const STREAK_MILESTONES = [7, 30, 100, 250, 500, 1000];
 
 /** Highest-impact celebration wins when several fire at once — used to pick the one overlay to show. */
 const TIER: Record<CelebrationType, number> = {

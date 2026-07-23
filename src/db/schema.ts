@@ -249,6 +249,15 @@ export const MIGRATIONS: string[] = [
   -- week. Makes the week behave like it just started instead of staying mathematically lost.
   ALTER TABLE goals ADD COLUMN restarted_at TEXT;
   `,
+  `
+  -- App-wide achievement badges (see services/achievements.ts's static catalog) — distinct
+  -- from "celebrations", which are per-goal and fire from the log flow. Existence of a row
+  -- means earned; "key" is the catalog entry's stable id, never reused.
+  CREATE TABLE achievements (
+    key TEXT PRIMARY KEY NOT NULL,
+    earned_at TEXT NOT NULL
+  );
+  `,
 ];
 
 export const BUILT_IN_TAGS = ["Tired", "Sore"];

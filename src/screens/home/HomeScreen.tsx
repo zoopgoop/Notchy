@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
 import { Animated, AppState, Easing, FlatList, LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AchievementToast } from "../../components/celebration/AchievementToast";
 import { CelebrationOverlay } from "../../components/celebration/CelebrationOverlay";
 import { EncouragementToast } from "../../components/celebration/EncouragementToast";
 import { HabitLogCalendar } from "../../components/charts/HabitLogCalendar";
@@ -25,6 +26,7 @@ import {
 import { projectFutureTargets } from "../../engine/progression";
 import { useCategories } from "../../hooks/useCategories";
 import { useDailyGoals } from "../../hooks/useDailyGoals";
+import { recordRestartedStreak } from "../../services/achievements";
 import { pickPrimaryCelebration } from "../../services/celebrations";
 import { DailyGoalView } from "../../services/dailyGoals";
 import { takePendingCelebration, takePendingEncouragement } from "../../services/pendingCelebration";
@@ -85,7 +87,7 @@ function formatNextDue(nextDue: string | null): string | null {
 }
 
 export function HomeScreen({ navigation }: Props) {
-  const { items, refetch } = useDailyGoals();
+  const { items, refetch, newlyEarnedAchievements, clearNewlyEarnedAchievements } = useDailyGoals();
   const { categories, refetch: refetchCategories } = useCategories();
   const [name, setName] = useState<string | null>(null);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
@@ -269,14 +271,18 @@ export function HomeScreen({ navigation }: Props) {
   async function handleStartAgainAfterLoss() {
     if (!lossPrompt) return;
     const goalId = lossPrompt.view.goal.id;
+    const hadStreak = lossPrompt.hadStreak;
     setLossPrompt(null);
     await restartGoalWeek(goalId, today());
+    if (hadStreak) await recordRestartedStreak();
     refetch();
   }
 
   async function handleAdjustHabitAfterLoss(view: DailyGoalView) {
+    const hadStreak = lossPrompt?.hadStreak ?? false;
     setLossPrompt(null);
     await restartGoalWeek(view.goal.id, today());
+    if (hadStreak) await recordRestartedStreak();
     navigation.navigate("HabitGoalForm", { editGoalId: view.goal.id });
   }
 
@@ -511,6 +517,10 @@ export function HomeScreen({ navigation }: Props) {
 
       {showEncouragement && (
         <EncouragementToast onDismiss={() => { setShowEncouragement(false); refetch(); }} />
+      )}
+
+      {newlyEarnedAchievements.length > 0 && (
+        <AchievementToast defs={newlyEarnedAchievements} onDismiss={clearNewlyEarnedAchievements} />
       )}
 
       {achievedGoal && (

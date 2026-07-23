@@ -1,9 +1,20 @@
 import { useState, useRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Line, Polyline, Text as SvgText } from "react-native-svg";
-import { theme } from "../../theme";
+import { theme, UNCATEGORIZED_COLOR } from "../../theme";
 import { formatNumber } from "../../utils/format";
 import { LoggedEntry } from "../../types";
+
+/**
+ * react-native-svg's <Text> collapses a plain leading space in `unit` (" Pages" -> "Pages"),
+ * and textAnchor re-anchors each <TSpan> independently rather than the whole run — both of
+ * which cause the value and unit to render on top of each other. A non-breaking space inside
+ * one single string content sidesteps both: it survives whitespace collapsing and there's only
+ * ever one text chunk to anchor.
+ */
+function svgValueLabel(value: number, unit: string): string {
+  return `${formatNumber(value)}${unit.replace(/^ /, " ")}`;
+}
 
 const CHART_HEIGHT = 160;
 const PADDING = 12;
@@ -35,6 +46,10 @@ export function ProgressChart({
   const points = entries.filter(
     (e): e is LoggedEntry & { actualValue: number } => e.actualValue !== undefined
   );
+  // The target/projected lines are neutral grey by design (reference, not identity) — but
+  // the uncategorized fallback color is ALSO grey, which collapses the whole chart into three
+  // indistinguishable shades of grey. Give the actual line real hue in that case specifically.
+  const lineColor = color === UNCATEGORIZED_COLOR ? theme.primary : color;
 
   if (points.length === 0 && projectedTargets.length === 0) {
     return (
@@ -119,7 +134,7 @@ export function ProgressChart({
                 opacity={0.25}
               />
             )}
-            <Polyline points={actualLine} fill="none" stroke={color} strokeWidth={3} />
+            <Polyline points={actualLine} fill="none" stroke={lineColor} strokeWidth={3} />
             {points.map((p, i) => (
               <Circle
                 key={p.id}
@@ -139,7 +154,7 @@ export function ProgressChart({
                 fill={theme.text}
                 fontWeight="600"
               >
-                {formatNumber(points[selectedIdx].actualValue)}{unit}
+                {svgValueLabel(points[selectedIdx].actualValue, unit)}
               </SvgText>
             )}
             {targetValue !== undefined && tipY !== null && (
@@ -151,7 +166,7 @@ export function ProgressChart({
                 fill={theme.text}
                 opacity={0.55}
               >
-                {formatNumber(targetValue)}{unit}
+                {svgValueLabel(targetValue, unit)}
               </SvgText>
             )}
           </Svg>
@@ -164,7 +179,7 @@ export function ProgressChart({
         </Text>
       </View>
       <View style={styles.legend}>
-        <LegendItem swatchColor={color} label="Actual" />
+        <LegendItem swatchColor={lineColor} label="Actual" />
         <LegendItem swatchColor={theme.text} label="Target" dashed />
         {projectedTargets.length > 0 && (
           <LegendItem swatchColor={theme.text} label="Projected" dashed faded />

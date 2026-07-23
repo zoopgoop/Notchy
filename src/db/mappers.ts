@@ -1,4 +1,5 @@
 import {
+  Achievement,
   Category,
   Celebration,
   CelebrationType,
@@ -154,6 +155,15 @@ export function rowToCelebration(row: CelebrationRow): Celebration {
     date: row.date,
     metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
   };
+}
+
+export interface AchievementRow {
+  key: string;
+  earned_at: string;
+}
+
+export function rowToAchievement(row: AchievementRow): Achievement {
+  return { key: row.key, earnedAt: row.earned_at };
 }
 
 export interface StreakRow {
