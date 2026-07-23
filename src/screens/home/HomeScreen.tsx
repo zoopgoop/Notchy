@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useFocusEffect } from "@react-navigation/native";
-import { Animated, Easing, FlatList, LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Animated, AppState, Easing, FlatList, LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { CelebrationOverlay } from "../../components/celebration/CelebrationOverlay";
 import { EncouragementToast } from "../../components/celebration/EncouragementToast";
 import { HabitLogCalendar } from "../../components/charts/HabitLogCalendar";
@@ -17,7 +17,9 @@ import {
   listEntriesByGoal,
   listGoalSchedules,
   listSkipsByGoal,
+  restartGoalWeek,
   setGoalActive,
+  setGoalOnIce,
   updateGoal,
 } from "../../db/repositories";
 import { projectFutureTargets } from "../../engine/progression";
@@ -30,7 +32,7 @@ import { logGoalEntry, skipGoalToday, spendSkipsToSaveStreak } from "../../servi
 import { getFreezesEnabled, getSkipsEnabled, getUserName } from "../../services/settings";
 import { forfeitCurrentStreak, recomputeStreak } from "../../services/streaks";
 import { loadWeeklySummary, WeeklySummary } from "../../services/weeklySummary";
-import { addDays, daysBetween, today } from "../../engine/dateUtils";
+import { addDays, daysBetween, localDateOf, today } from "../../engine/dateUtils";
 import { cardShadow, theme, UNCATEGORIZED_COLOR } from "../../theme";
 import { Celebration, Goal, Habit, LoggedEntry, SkipLog } from "../../types";
 import { formatNumber, unitSuffix } from "../../utils/format";
@@ -57,10 +59,11 @@ type DialogState =
   | null;
 
 function tierOf(item: DailyGoalView): number {
-  if (item.isCrisis || item.isUrgentToday || item.isOverdue) return 0;
+  // On ice — the user already dismissed this one, sort below every other active habit.
+  if (item.isOnIce) return 5;
+  if (item.isCrisis || item.isUrgentToday || item.isOverdue || item.isQuotaGone) return 0;
   if (item.daysUntilTarget !== null && item.daysUntilTarget <= 7) return 1;
-  const todayMs = Date.parse(new Date().toISOString().slice(0, 10));
-  if ((todayMs - Date.parse(item.goal.createdAt.slice(0, 10))) / 86400000 <= 7) return 2;
+  if (daysBetween(localDateOf(item.goal.createdAt), today()) <= 7) return 2;
   if (item.streak.current > 0) return 3;
   return 4;
 }
@@ -99,7 +102,7 @@ export function HomeScreen({ navigation }: Props) {
   const [achievedGoal, setAchievedGoal] = useState<{ habitName: string; goalId: string; daysEarly: number | null } | null>(null);
   const [skipsEnabled, setSkipsEnabled] = useState(true);
   const [freezesEnabled, setFreezesEnabled] = useState(true);
-  const [letGoFor, setLetGoFor] = useState<string | null>(null);
+  const [lossPrompt, setLossPrompt] = useState<{ view: DailyGoalView; hadStreak: boolean } | null>(null);
   const [activeFilter, setActiveFilter] = useState("all");
   const [showEncouragement, setShowEncouragement] = useState(false);
 
@@ -132,15 +135,14 @@ export function HomeScreen({ navigation }: Props) {
 
   const filteredItems = useMemo(() => {
     if (activeFilter === "all") return items;
-    if (activeFilter === "urgent") return items.filter((i) => i.isCrisis || i.isUrgentToday || i.isOverdue);
+    if (activeFilter === "urgent") return items.filter((i) => i.isCrisis || i.isUrgentToday || i.isOverdue || i.isQuotaGone);
     if (activeFilter === "new") {
-      const todayMs = Date.parse(new Date().toISOString().slice(0, 10));
-      return items.filter((i) => (todayMs - Date.parse(i.goal.createdAt.slice(0, 10))) / 86400000 <= 7);
+      return items.filter((i) => daysBetween(localDateOf(i.goal.createdAt), today()) <= 7);
     }
     return items.filter((i) => i.category?.id === activeFilter);
   }, [items, activeFilter]);
 
-  const behindCount = items.filter((i) => i.isCrisis || i.isUrgentToday || i.isOverdue).length;
+  const behindCount = items.filter((i) => i.isCrisis || i.isUrgentToday || i.isOverdue || i.isQuotaGone).length;
 
   const missedDeadlineView = useMemo(
     () => items.find((item) => item.daysUntilTarget !== null && item.daysUntilTarget < 0) ?? null,
@@ -149,8 +151,44 @@ export function HomeScreen({ navigation }: Props) {
 
   const crisisView = useMemo(() => items.find((item) => item.isCrisis) ?? null, [items]);
   const canSpendSkips = !!crisisView && crisisView.skipsRemaining >= crisisView.skipsNeededToSave;
-  const showSaveStreak = !!crisisView && canSpendSkips && letGoFor !== crisisView.goal.id;
-  const showLostStreak = !!crisisView && (!canSpendSkips || letGoFor === crisisView.goal.id);
+  const showSaveStreak = !!crisisView && canSpendSkips;
+
+  // No streak at stake, but the week's quota is already gone and not yet dismissed. Only the
+  // first such goal is surfaced at a time (same pattern as missedDeadlineView below) — once it's
+  // resolved and refetch() runs, this naturally picks up the next one on the following render,
+  // so multiple simultaneous crisis/quota-gone goals queue through one at a time rather than
+  // getting stuck.
+  const quotaGoneView = useMemo(() => items.find((item) => item.isQuotaGone) ?? null, [items]);
+
+  // The moment a crisis can no longer be saved with skips, the streak is already gone —
+  // forfeit it immediately rather than waiting for the week to close out naturally. The
+  // snapshot in lossPrompt keeps the prompt showing even once the forfeit flips isCrisis
+  // back to false on refetch (0 streak means no streak is "at stake" anymore).
+  useEffect(() => {
+    if (crisisView && !canSpendSkips && lossPrompt?.view.goal.id !== crisisView.goal.id) {
+      setLossPrompt({ view: crisisView, hadStreak: true });
+      forfeitCurrentStreak(crisisView.goal.id).then(refetch);
+      return;
+    }
+    if (!crisisView && quotaGoneView && lossPrompt?.view.goal.id !== quotaGoneView.goal.id) {
+      setLossPrompt({ view: quotaGoneView, hadStreak: false });
+    }
+  }, [crisisView, canSpendSkips, quotaGoneView, lossPrompt, refetch]);
+
+  // Backgrounding/closing the app while the prompt is up counts as a dismissal — same as
+  // tapping the ✕, it puts the goal on ice rather than leaving it in limbo. Only "background"
+  // qualifies — "inactive" also fires for transient interruptions (Control Center, the app
+  // switcher preview, a phone call) that aren't the user actually leaving the app.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "background" && lossPrompt) {
+        const goalId = lossPrompt.view.goal.id;
+        setLossPrompt(null);
+        setGoalOnIce(goalId, true);
+      }
+    });
+    return () => subscription.remove();
+  }, [lossPrompt]);
 
   async function performSkip(view: DailyGoalView) {
     const result = await skipGoalToday(view.goal, today());
@@ -222,20 +260,30 @@ export function HomeScreen({ navigation }: Props) {
     refetch();
   }
 
-  function handleLetItGo(view: DailyGoalView) {
-    setLetGoFor(view.goal.id);
+  async function handleLetItGo(view: DailyGoalView) {
+    setLossPrompt({ view, hadStreak: true });
+    await forfeitCurrentStreak(view.goal.id);
+    refetch();
   }
 
-  async function handleStartAgainAfterLoss(view: DailyGoalView) {
-    await forfeitCurrentStreak(view.goal.id);
-    setLetGoFor(null);
+  async function handleStartAgainAfterLoss() {
+    if (!lossPrompt) return;
+    const goalId = lossPrompt.view.goal.id;
+    setLossPrompt(null);
+    await restartGoalWeek(goalId, today());
     refetch();
   }
 
   async function handleAdjustHabitAfterLoss(view: DailyGoalView) {
-    await forfeitCurrentStreak(view.goal.id);
-    setLetGoFor(null);
+    setLossPrompt(null);
+    await restartGoalWeek(view.goal.id, today());
     navigation.navigate("HabitGoalForm", { editGoalId: view.goal.id });
+  }
+
+  async function handleDismissLossPrompt(view: DailyGoalView) {
+    setLossPrompt(null);
+    await setGoalOnIce(view.goal.id, true);
+    refetch();
   }
 
   const actionSheetOptions: ActionSheetOption[] = actionSheetView
@@ -382,11 +430,13 @@ export function HomeScreen({ navigation }: Props) {
         />
       )}
 
-      {crisisView && dialog === null && !missedDeadlineView && showLostStreak && (
+      {lossPrompt && dialog === null && !missedDeadlineView && (
         <StreakLostPrompt
-          habitName={crisisView.habit.name}
-          onAdjustHabit={() => handleAdjustHabitAfterLoss(crisisView)}
-          onStartAgain={() => handleStartAgainAfterLoss(crisisView)}
+          habitName={lossPrompt.view.habit.name}
+          hadStreak={lossPrompt.hadStreak}
+          onAdjustHabit={() => handleAdjustHabitAfterLoss(lossPrompt.view)}
+          onStartAgain={handleStartAgainAfterLoss}
+          onDismiss={() => handleDismissLossPrompt(lossPrompt.view)}
         />
       )}
 
@@ -528,6 +578,8 @@ function GoalCard({
     isUrgentToday,
     isOverdue,
     isCrisis,
+    isQuotaGone,
+    isOnIce,
     dueToday,
     nextTarget,
   } = view;
@@ -536,11 +588,13 @@ function GoalCard({
   const statusColor =
     status.kind === "logged"
       ? "#4CAF50"
-      : isCrisis || isUrgentToday || isOverdue
-        ? theme.danger
-        : dueToday
-          ? theme.warning
-          : theme.textMuted;
+      : isOnIce
+        ? theme.frozen
+        : isCrisis || isUrgentToday || isOverdue || isQuotaGone
+          ? theme.danger
+          : dueToday
+            ? theme.warning
+            : theme.textMuted;
 
   const [expanded, setExpanded] = useState(false);
   const [entries, setEntries] = useState<LoggedEntry[] | null>(null);
@@ -615,7 +669,7 @@ function GoalCard({
         {daysUntilTarget !== null && (
           <Text style={styles.metaText}>{Math.max(daysUntilTarget, 0)} days left</Text>
         )}
-        {nextDueLabel && !isOverdue && <Text style={styles.metaText}>Next due: {nextDueLabel}</Text>}
+        {nextDueLabel && !isOverdue && !isOnIce && <Text style={styles.metaText}>Next due: {nextDueLabel}</Text>}
       </View>
       {isUrgentToday && streak.current > 0 && (
         <Text style={styles.urgentText}>⚠️ Complete a check-in today to keep your streak alive!</Text>

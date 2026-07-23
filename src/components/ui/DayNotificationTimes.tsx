@@ -47,10 +47,12 @@ export function DayNotificationTimes({
   selectedDays,
   times,
   onChange,
+  disabled,
 }: {
   selectedDays: number[];
   times: Record<number, DayTime>;
   onChange: (day: number, time: DayTime) => void;
+  disabled?: boolean;
 }) {
   const [openDay, setOpenDay] = useState<number | null>(null);
 
@@ -62,8 +64,8 @@ export function DayNotificationTimes({
         return (
           <Pressable
             key={day}
-            style={[styles.chip, !active && styles.chipMuted]}
-            onPress={() => active && setOpenDay(day)}
+            style={[styles.chip, !active && styles.chipMuted, disabled && styles.chipMuted]}
+            onPress={() => active && !disabled && setOpenDay(day)}
           >
             <Text style={[styles.chipText, !active && styles.chipTextMuted]}>{formatCompact(time)}</Text>
             {active && openDay === day && (

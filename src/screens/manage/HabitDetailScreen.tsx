@@ -277,10 +277,13 @@ export function HabitDetailScreen({ route, navigation }: Props) {
                   onPress={() => navigation.navigate("HabitGoalForm", { editGoalId: goal.id })}
                 />
                 <View style={styles.spacer} />
+                {/* Schedule doubles as the weekly quota (see tallyWeek) — once a goal has a
+                    target, the schedule locks with it until achieved. Goalless habits have
+                    no lock to defeat, so this stays free to edit. */}
+                <Button title="Edit Schedule" variant="secondary" onPress={openScheduleEditor} />
+                <View style={styles.spacer} />
               </>
             )}
-            <Button title="Edit Schedule" variant="secondary" onPress={openScheduleEditor} />
-            <View style={styles.spacer} />
             {freezesEnabled && (
               <>
                 <Button

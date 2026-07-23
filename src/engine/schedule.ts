@@ -1,5 +1,5 @@
 import { FreezeWindow, Goal, GoalSchedule, LoggedEntry, SkipLog } from "../types";
-import { addDays, getWeekday } from "./dateUtils";
+import { addDays, getWeekday, localDateOf } from "./dateUtils";
 
 /** `schedules` must be ascending by `effectiveDate` (as returned by `listGoalSchedules`). */
 export function scheduledDaysAsOf(schedules: GoalSchedule[], date: string): number[] {
@@ -43,7 +43,7 @@ export interface WeekTally {
  */
 export function tallyWeek(
   schedules: GoalSchedule[],
-  goal: Pick<Goal, "targetDate" | "createdAt">,
+  goal: Pick<Goal, "targetDate" | "createdAt" | "restartedAt">,
   entries: LoggedEntry[],
   skips: SkipLog[],
   freezeWindows: FreezeWindow[],
@@ -66,9 +66,12 @@ export function tallyWeek(
     cursor = addDays(cursor, 1);
   }
 
-  // Trim the required window symmetrically: start no earlier than createdAt (first week),
-  // end no later than targetDate (final week). Counts only scheduled days in that window.
-  const effectiveStart = goal.createdAt.slice(0, 10) > weekStart ? goal.createdAt.slice(0, 10) : weekStart;
+  // Trim the required window symmetrically: start no earlier than createdAt (first week) or
+  // a restart date (see restartGoalWeek), end no later than targetDate (final week). Counts
+  // only scheduled days in that window.
+  const createdAt = localDateOf(goal.createdAt);
+  let effectiveStart = createdAt > weekStart ? createdAt : weekStart;
+  if (goal.restartedAt && goal.restartedAt > effectiveStart) effectiveStart = goal.restartedAt;
   const effectiveEnd = goal.targetDate && goal.targetDate < weekEnd ? goal.targetDate : weekEnd;
   const scheduledDays = scheduledDaysAsOf(schedules, weekStart);
   let required = 0;
@@ -97,7 +100,7 @@ export interface ScheduleDayResult {
  */
 export function walkWeeklySchedule(
   schedules: GoalSchedule[],
-  goal: Pick<Goal, "targetDate" | "createdAt">,
+  goal: Pick<Goal, "targetDate" | "createdAt" | "restartedAt">,
   entries: LoggedEntry[],
   skips: SkipLog[],
   freezeWindows: FreezeWindow[],
@@ -138,7 +141,7 @@ export interface WeekStatus {
 /** The live, in-progress state of the current week — feeds urgency/crisis detection and the weekly-progress tile. */
 export function currentWeekStatus(
   schedules: GoalSchedule[],
-  goal: Pick<Goal, "targetDate" | "createdAt">,
+  goal: Pick<Goal, "targetDate" | "createdAt" | "restartedAt">,
   entries: LoggedEntry[],
   skips: SkipLog[],
   freezeWindows: FreezeWindow[],

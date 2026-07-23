@@ -54,6 +54,10 @@ export interface Goal {
   active: boolean;
   /** When false, overdue/catch-up notifications are suppressed on days outside the scheduled day list. */
   notifyOffSchedule: boolean;
+  /** Once true, every notification for this goal is silenced indefinitely — set only by dismissing the lost-streak/quota-gone prompt, cleared by logging or adjusting the goal. */
+  onIce: boolean;
+  /** Set by "Start Again"/"Adjust Habit" on the lost-streak/quota-gone prompt — trims this week's required check-ins down to this date forward, same as a fresh goal's first week. */
+  restartedAt?: string;
 }
 
 /** One day's check-in for a goal — at most one per (goalId, date), see `createEntry`. */

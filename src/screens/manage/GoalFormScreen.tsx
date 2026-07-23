@@ -11,7 +11,7 @@ import { PageTitle, Screen } from "../../components/ui/Screen";
 import { ScheduleDayPicker } from "../../components/ui/ScheduleDayPicker";
 import { createGoal, createGoalSchedule, getHabit, setGoalNotificationTimes, updateHabit } from "../../db/repositories";
 import { directionFromValues } from "../../engine/curves";
-import { formatDateLocal } from "../../engine/dateUtils";
+import { formatDateLocal, localDateOf } from "../../engine/dateUtils";
 import { CurveType, Direction, Habit, ProgressionMode } from "../../types";
 import { ManageStackParamList } from "../../navigation/types";
 
@@ -116,7 +116,7 @@ export function GoalFormScreen({ route, navigation }: Props) {
         step: isBoolean ? 1 : parsedStep,
         active: true,
       });
-      await createGoalSchedule(goal.id, goal.createdAt.slice(0, 10), scheduledDays);
+      await createGoalSchedule(goal.id, localDateOf(goal.createdAt), scheduledDays);
       await setGoalNotificationTimes(goal.id, notificationTimesFromMap(goal.id, scheduledDays, notificationTimes));
       navigation.goBack();
     } finally {

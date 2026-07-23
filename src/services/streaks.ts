@@ -1,4 +1,4 @@
-import { today } from "../engine/dateUtils";
+import { localDateOf, today } from "../engine/dateUtils";
 import { walkWeeklySchedule } from "../engine/schedule";
 import { Goal, Streak } from "../types";
 import {
@@ -26,7 +26,7 @@ export async function recomputeStreak(goal: Goal, asOfDate: string = today()): P
     listGoalSchedules(goal.id),
   ]);
 
-  const fromDate = goal.createdAt.slice(0, 10);
+  const fromDate = localDateOf(goal.createdAt);
   const days = walkWeeklySchedule(schedules, goal, entries, skips, freezeWindows, fromDate, asOfDate);
 
   let current = 0;

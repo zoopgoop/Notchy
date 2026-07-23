@@ -1,4 +1,4 @@
-import { addDays, today } from "../engine/dateUtils";
+import { addDays, localDateOf, today } from "../engine/dateUtils";
 import { listActiveGoals, listEntriesByGoal, listFreezeWindowsByGoal, listSkipsByGoal } from "../db/repositories";
 
 export interface WeeklySummary {
@@ -29,7 +29,7 @@ export async function loadWeeklySummary(asOfDate: string = today()): Promise<Wee
     ]);
     const entryByDate = new Map(entries.map((entry) => [entry.date, entry]));
     const skipDates = new Set(skips.map((skip) => skip.date));
-    const createdDate = goal.createdAt.slice(0, 10);
+    const createdDate = localDateOf(goal.createdAt);
 
     for (const date of dates) {
       if (date < createdDate) continue;

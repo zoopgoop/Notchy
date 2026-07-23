@@ -7,9 +7,11 @@ const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 export function DayOfWeekPicker({
   value,
   onChange,
+  disabled,
 }: {
   value: number[];
   onChange: (days: number[]) => void;
+  disabled?: boolean;
 }) {
   function toggle(day: number) {
     onChange(value.includes(day) ? value.filter((d) => d !== day) : [...value, day].sort());
@@ -23,7 +25,8 @@ export function DayOfWeekPicker({
           <Pressable
             key={day}
             onPress={() => toggle(day)}
-            style={[styles.chip, selected && styles.chipSelected]}
+            disabled={disabled}
+            style={[styles.chip, selected && styles.chipSelected, disabled && styles.chipDisabled]}
           >
             <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
           </Pressable>
@@ -52,6 +55,9 @@ const styles = StyleSheet.create({
   chipSelected: {
     backgroundColor: theme.primary,
     borderColor: theme.primary,
+  },
+  chipDisabled: {
+    opacity: 0.5,
   },
   chipText: {
     color: theme.textMuted,

@@ -1,5 +1,5 @@
 import { requireDirection } from "../engine/curves";
-import { addDays, daysBetween, getWeekday, today } from "../engine/dateUtils";
+import { addDays, daysBetween, getWeekday, localDateOf, today } from "../engine/dateUtils";
 import { generateNextTarget } from "../engine/progression";
 import { countScheduledDaysBetween, currentWeekStatus, nextScheduledReminder, scheduledDaysAsOf, weeklySkipLimitFor } from "../engine/schedule";
 import {
@@ -46,6 +46,14 @@ export interface DailyGoalView {
   overdueNotificationDayOfWeek: number | null;
   /** Quota is now mathematically out of reach via normal logging alone — only meaningful with a streak at stake. */
   isCrisis: boolean;
+  /**
+   * Same math as isCrisis, but with no streak at stake — nothing to rescue, so this surfaces
+   * the lost-streak-style prompt without a skip offer. False once the goal is onIce (already
+   * dismissed) so the prompt doesn't keep reopening.
+   */
+  isQuotaGone: boolean;
+  /** True once the user has dismissed the lost-streak/quota-gone prompt without adjusting or restarting — silences every notification until they log or adjust the goal. */
+  isOnIce: boolean;
   /** How many skips would need to be spent on already-missed days this week to make quota reachable again. */
   skipsNeededToSave: number;
   /** The generated target for the next check-in after today — null for boolean habits or habits not yet logged today. */
@@ -80,18 +88,29 @@ async function loadDailyGoalView(goal: Goal, date: string): Promise<DailyGoalVie
   const hasStreakAtStake = streak.current > 0 && !weekStatus.exempt;
   const isUrgentToday =
     !weekStatus.exempt && weekStatus.stillNeeded > 0 && weekStatus.daysRemaining === weekStatus.stillNeeded;
-  const isCrisis = hasStreakAtStake && weekStatus.stillNeeded > weekStatus.daysRemaining;
+  const quotaUnreachable = !weekStatus.exempt && weekStatus.stillNeeded > weekStatus.daysRemaining;
+  const isCrisis = hasStreakAtStake && quotaUnreachable;
+  const isOnIce = goal.onIce;
+  const isQuotaGone = !hasStreakAtStake && quotaUnreachable && !isOnIce;
   const skipsNeededToSave = isCrisis ? weekStatus.stillNeeded - weekStatus.daysRemaining : 0;
 
   // How many scheduled days have elapsed so far this week (today inclusive if scheduled).
-  // Trim to createdAt so a habit created mid-week isn't immediately flagged as behind
-  // for scheduled days that existed before the habit did.
-  const createdAt = goal.createdAt.slice(0, 10);
-  const effectiveWeekStart = createdAt > weekStatus.weekStart ? createdAt : weekStatus.weekStart;
+  // Trim to createdAt so a habit created mid-week isn't immediately flagged as behind for
+  // scheduled days that existed before the habit did — and to restartedAt (see
+  // restartGoalWeek) so the same is true right after the user restarts the week.
+  const createdAt = localDateOf(goal.createdAt);
+  let effectiveWeekStart = createdAt > weekStatus.weekStart ? createdAt : weekStatus.weekStart;
+  if (goal.restartedAt && goal.restartedAt > effectiveWeekStart) effectiveWeekStart = goal.restartedAt;
   // Count only past scheduled days (not today) — being behind on today is isUrgentToday, not overdue.
   const expectedByNow = countScheduledDaysBetween(schedules, addDays(effectiveWeekStart, -1), addDays(date, -1));
   const alreadyDone = status.kind === "logged" || status.kind === "skipped";
-  const isOverdue = !alreadyDone && !weekStatus.exempt && !isCrisis && weekStatus.credited < expectedByNow;
+  const isOverdue =
+    !alreadyDone &&
+    !weekStatus.exempt &&
+    !isCrisis &&
+    !isQuotaGone &&
+    !isOnIce &&
+    weekStatus.credited < expectedByNow;
 
   // Walk backwards from yesterday to find the most recently missed scheduled day — its configured
   // notification time is used for overdue daily reminders (so Mon+Wed missed → reminds at Wed's time).
@@ -134,6 +153,8 @@ async function loadDailyGoalView(goal: Goal, date: string): Promise<DailyGoalVie
     isOverdue,
     overdueNotificationDayOfWeek,
     isCrisis,
+    isQuotaGone,
+    isOnIce,
     skipsNeededToSave,
     nextTarget,
   };

@@ -63,6 +63,9 @@ class CountdownNotificationReceiver : BroadcastReceiver() {
       .setCustomContentView(layout)
       .setAutoCancel(true)
       .setPriority(NotificationCompat.PRIORITY_HIGH)
+      // Chronometer keeps ticking past zero into negative time on its own — force the
+      // notification to dismiss the moment the countdown target is reached.
+      .setTimeoutAfter(msUntilTarget.coerceAtLeast(0L))
       .build()
 
     manager.notify(COUNTDOWN_NOTIF_ID, notification)

@@ -56,3 +56,13 @@ export function clamp(value: number, min: number, max: number): number {
 export function today(): string {
   return formatDateLocal(new Date());
 }
+
+/**
+ * The local calendar date a full UTC timestamp (e.g. `Goal.createdAt`, always
+ * `new Date().toISOString()`) represents. Use this instead of slicing the ISO string
+ * directly (`isoTimestamp.slice(0, 10)`) — that silently returns the UTC date, which is
+ * one day off from `today()` for a large chunk of the day in every timezone ahead of UTC.
+ */
+export function localDateOf(isoTimestamp: string): string {
+  return formatDateLocal(new Date(isoTimestamp));
+}

@@ -62,6 +62,8 @@ export interface GoalRow {
   created_at: string;
   active: number;
   notify_off_schedule: number;
+  on_ice: number;
+  restarted_at: string | null;
 }
 
 export function rowToGoal(row: GoalRow): Goal {
@@ -79,6 +81,8 @@ export function rowToGoal(row: GoalRow): Goal {
     createdAt: row.created_at,
     active: !!row.active,
     notifyOffSchedule: row.notify_off_schedule !== 0,
+    onIce: !!row.on_ice,
+    restartedAt: row.restarted_at ?? undefined,
   };
 }
 

@@ -140,10 +140,15 @@ function buildInitialNotification(view: DailyGoalView): { title: string; body: s
   const streak = view.streak.current;
 
   if (view.isCrisis) {
-    return {
-      title: "Streak SOS",
-      body: `${name} needs attention — use a skip to rescue your ${streak}-day streak.`,
-    };
+    return view.skipsRemaining >= view.skipsNeededToSave
+      ? {
+          title: "Streak SOS",
+          body: `${name} needs attention — use a skip to rescue your ${streak}-day streak.`,
+        }
+      : {
+          title: "Streak lost",
+          body: `${name}'s streak got away from you. Start over?`,
+        };
   }
 
   if (view.isUrgentToday) {
@@ -246,9 +251,16 @@ export async function cancelGoalNotifications(goalId: string): Promise<void> {
  * after a goal gets logged or skipped.
  */
 export async function scheduleAllDailyNotifications(items: DailyGoalView[]): Promise<void> {
-  const pendingDueToday = items.filter((item) => item.status.kind === "pending" && item.dueToday);
+  // Goals on ice get no notifications of any kind, indefinitely — the user explicitly
+  // dismissed the lost-streak/quota-gone prompt, so nagging further would just be noise.
+  // Logging or adjusting the goal takes it off ice and this resumes on the next run.
+  const pendingDueToday = items.filter(
+    (item) => item.status.kind === "pending" && item.dueToday && !item.isOnIce
+  );
   // Overdue items that aren't scheduled today — eligible for off-schedule reminders but never a countdown.
-  const pendingOverdue = items.filter((item) => item.status.kind === "pending" && !item.dueToday && item.isOverdue);
+  const pendingOverdue = items.filter(
+    (item) => item.status.kind === "pending" && !item.dueToday && item.isOverdue && !item.isOnIce
+  );
   await Promise.all([
     scheduleCountdownNotifications(pendingDueToday),
     scheduleInitialNotifications(items, [...pendingDueToday, ...pendingOverdue]),

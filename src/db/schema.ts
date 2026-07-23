@@ -236,6 +236,19 @@ export const MIGRATIONS: string[] = [
   -- day list (e.g. overdue reminders that fall on non-scheduled days). On by default.
   ALTER TABLE goals ADD COLUMN notify_off_schedule INTEGER NOT NULL DEFAULT 1;
   `,
+  `
+  -- Set only when the user dismisses the lost-streak/quota-gone prompt without adjusting
+  -- or restarting — silences every notification for the goal indefinitely (not just for
+  -- the day). Cleared the moment the user logs an entry or adjusts the goal.
+  ALTER TABLE goals ADD COLUMN on_ice INTEGER NOT NULL DEFAULT 0;
+  `,
+  `
+  -- Set when the user hits "Start Again" or "Adjust Habit" on the lost-streak/quota-gone
+  -- prompt — trims this week's required check-ins down to just this date forward (see
+  -- tallyWeek's effectiveStart), the same way a goal's own createdAt does for its first
+  -- week. Makes the week behave like it just started instead of staying mathematically lost.
+  ALTER TABLE goals ADD COLUMN restarted_at TEXT;
+  `,
 ];
 
 export const BUILT_IN_TAGS = ["Tired", "Sore"];

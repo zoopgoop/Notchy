@@ -4,10 +4,16 @@ import { generateId } from "../id";
 import { GoalRow, rowToGoal } from "../mappers";
 
 export async function createGoal(
-  input: Omit<Goal, "id" | "createdAt" | "notifyOffSchedule"> & { notifyOffSchedule?: boolean }
+  input: Omit<Goal, "id" | "createdAt" | "notifyOffSchedule" | "onIce"> & { notifyOffSchedule?: boolean }
 ): Promise<Goal> {
   const db = await getDb();
-  const goal: Goal = { ...input, notifyOffSchedule: input.notifyOffSchedule ?? true, id: generateId(), createdAt: new Date().toISOString() };
+  const goal: Goal = {
+    ...input,
+    notifyOffSchedule: input.notifyOffSchedule ?? true,
+    onIce: false,
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+  };
   await db.runAsync(
     `INSERT INTO goals (
       id, habit_id, start_value, target_value, target_date, curve_type, adaptive,
@@ -104,6 +110,21 @@ export async function setGoalNotifyOffSchedule(id: string, enabled: boolean): Pr
   await db.runAsync("UPDATE goals SET notify_off_schedule = ? WHERE id = ?", [enabled ? 1 : 0, id]);
 }
 
+export async function setGoalOnIce(id: string, onIce: boolean): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE goals SET on_ice = ? WHERE id = ?", [onIce ? 1 : 0, id]);
+}
+
+/**
+ * "Start Again" / "Adjust Habit" on the lost-streak/quota-gone prompt — makes this week
+ * behave like the goal just started (see tallyWeek's effectiveStart), instead of staying
+ * mathematically lost for the rest of the week. Also wakes the goal off ice, same as updateGoal.
+ */
+export async function restartGoalWeek(id: string, date: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE goals SET restarted_at = ?, on_ice = 0 WHERE id = ?", [date, id]);
+}
+
 /**
  * Used by the post-achievement "adjust this goal" flow and the missed-deadline
  * "extend" flow — the only two places a goal's core settings can change once
@@ -133,4 +154,7 @@ export async function updateGoal(
     const dbValue = typeof value === "boolean" ? (value ? 1 : 0) : value;
     await db.runAsync(`UPDATE goals SET ${column} = ? WHERE id = ?`, [dbValue as string | number, id]);
   }
+
+  // Adjusting a goal is one of the two ways to wake a goal back up off ice.
+  await db.runAsync("UPDATE goals SET on_ice = 0 WHERE id = ?", [id]);
 }

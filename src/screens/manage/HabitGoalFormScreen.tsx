@@ -27,7 +27,7 @@ import {
   updateHabit,
 } from "../../db/repositories";
 import { directionFromValues } from "../../engine/curves";
-import { formatDateLocal, today } from "../../engine/dateUtils";
+import { formatDateLocal, localDateOf, today } from "../../engine/dateUtils";
 import { generateNextTarget } from "../../engine/progression";
 import { scheduledDaysAsOf } from "../../engine/schedule";
 import { useCategories } from "../../hooks/useCategories";
@@ -123,6 +123,11 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
   const [notificationTimes, setNotificationTimes] = useState<Record<number, DayTime>>({});
   const [saving, setSaving] = useState(false);
   const [confirmCommit, setConfirmCommit] = useState(false);
+  // Whether the goal we loaded already had a target and wasn't achieved — the schedule
+  // doubles as the weekly quota (see tallyWeek), so once a goal is set it locks in until
+  // achieved, same as the rest of its pacing. Fixed at load time, not from live form state,
+  // so flipping "Open-ended" mid-edit can't be used to sneak the schedule back open.
+  const [scheduleLocked, setScheduleLocked] = useState(false);
 
   useEffect(() => {
     if (!editGoalId) return;
@@ -153,6 +158,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
         setOpenEnded(goal.targetValue === undefined);
         if (goal.targetValue !== undefined) setTargetValue(String(goal.targetValue));
       }
+      setScheduleLocked(goal.targetValue !== undefined && !goal.achievedAt);
       setPacingMode(goal.targetDate ? "date" : "step");
       if (goal.targetDate) setTargetDate(new Date(goal.targetDate));
       setCurveType(goal.curveType === "linear" ? "linear" : goal.curveType === "exponential" ? "exponential" : "incremental");
@@ -217,6 +223,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
       createdAt: today(),
       active: true,
       notifyOffSchedule: true,
+      onIce: false,
     };
     const previewHabit: Habit = {
       id: "preview",
@@ -309,7 +316,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
           ...goalFields,
           active: true,
         });
-        await createGoalSchedule(goal.id, goal.createdAt.slice(0, 10), scheduledDays);
+        await createGoalSchedule(goal.id, localDateOf(goal.createdAt), scheduledDays);
         goalId = goal.id;
       }
 
@@ -322,7 +329,9 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
   }
 
   function handleSave() {
-    if (isEditMode || !hasTarget) {
+    // Nothing new to warn about if there's no target, or the goal was already locked in
+    // (this same save can't lock anything further than it already is).
+    if (!hasTarget || (isEditMode && scheduleLocked)) {
       performSave();
       return;
     }
@@ -392,11 +401,16 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
             <FieldGroup>
               <View style={styles.switchRow}>
                 <FieldLabel>Open-ended (no end goal)</FieldLabel>
-                <Switch value={openEnded} onValueChange={setOpenEnded} />
+                <Switch
+                  value={openEnded}
+                  onValueChange={setOpenEnded}
+                  disabled={isEditMode && scheduleLocked}
+                />
               </View>
               <HintText>
-                Runs forever on streaks and daily targets alone, with no finish line. You can change
-                this to a goal — or back — anytime, since there's nothing to lock in without one.
+                {isEditMode && scheduleLocked
+                  ? "Locked with the rest of this goal's schedule until you achieve it (or its date passes)."
+                  : "Runs forever on streaks and daily targets alone, with no finish line. You can change this to a goal — or back — anytime, since there's nothing to lock in without one."}
               </HintText>
             </FieldGroup>
           )}
@@ -492,9 +506,12 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
           onChangeDays={setScheduledDays}
           times={notificationTimes}
           onChangeTime={handleChangeNotificationTime}
+          disabled={isEditMode && scheduleLocked}
         />
         <HintText>
-          These are your check-in days — when you'll be reminded. You can log on any day and it still counts toward your weekly quota.
+          {isEditMode && scheduleLocked
+            ? "How many days you pick here sets your weekly quota, so it's locked in until you achieve this goal (or its date passes) — the only other way to change it is deleting this habit and starting over."
+            : "These are your check-in days — when you'll be reminded. You can log on any day and it still counts toward your weekly quota. Once you save a goal, this locks in until you achieve it."}
         </HintText>
       </FieldGroup>
 
@@ -502,8 +519,8 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
 
       <ConfirmDialog
         visible={confirmCommit}
-        title="Lock these settings in?"
-        message="Once saved, these settings are final until you hit the goal or its date passes. The only other way to change them is deleting this habit and starting over."
+        title="Lock in your schedule?"
+        message="Once saved, your check-in schedule (and whether this stays open-ended) is locked until you achieve this goal or its date passes. The only other way to change it is deleting this habit and starting over."
         confirmLabel="Confirm"
         cancelLabel="Cancel"
         onConfirm={() => {

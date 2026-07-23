@@ -17,6 +17,7 @@ function makeGoal(overrides: Partial<Goal> = {}): Goal {
     createdAt: "2026-01-01",
     active: true,
     notifyOffSchedule: true,
+    onIce: false,
     ...overrides,
   };
 }

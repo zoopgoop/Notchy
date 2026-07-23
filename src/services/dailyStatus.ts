@@ -12,6 +12,7 @@ import {
   listEntriesByGoal,
   listGoalSchedules,
   listSkipsByGoal,
+  setGoalOnIce,
 } from "../db/repositories";
 import { detectAndRecordCelebrations } from "./celebrations";
 import { recomputeStreak } from "./streaks";
@@ -138,6 +139,11 @@ export async function logGoalEntry(input: LogGoalEntryInput): Promise<LogGoalEnt
 
   const streak = await recomputeStreak(input.goal, input.date);
   const celebrations = await detectAndRecordCelebrations(input.goal, input.habit, entry, streak);
+
+  // Logging is one of the two ways to wake a goal back up off ice.
+  if (input.goal.onIce) {
+    await setGoalOnIce(input.goal.id, false);
+  }
 
   return { entry, celebrations };
 }
