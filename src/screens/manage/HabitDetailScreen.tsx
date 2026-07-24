@@ -4,11 +4,11 @@ import { useFocusEffect } from "@react-navigation/native";
 import { FlatList, Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { Button } from "../../components/ui/Button";
 import { HabitLogCalendar } from "../../components/charts/HabitLogCalendar";
-import { ProgressChart } from "../../components/charts/ProgressChart";
+import { HabitProgressChart } from "../../components/charts/HabitProgressChart";
 import { CategoryPicker } from "../../components/ui/CategoryPicker";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { DayTime, notificationTimesFromMap, notificationTimesToMap } from "../../components/ui/DayNotificationTimes";
-import { FieldGroup, FieldLabel, HintText } from "../../components/ui/FormField";
+import { FieldGroup, FieldLabel, HintText, TextField } from "../../components/ui/FormField";
 import { PageTitle, Screen } from "../../components/ui/Screen";
 import { ScheduleDayPicker } from "../../components/ui/ScheduleDayPicker";
 import {
@@ -25,12 +25,15 @@ import {
   listGoalSchedules,
   listSkipsByGoal,
   setGoalActive,
+  setGoalAdaptive,
   setGoalNotificationTimes,
   setGoalNotifyOffSchedule,
   setHabitCategory,
+  setHabitDescription,
 } from "../../db/repositories";
 import { cancelGoalNotifications } from "../../services/notifications";
 import { today } from "../../engine/dateUtils";
+import { adaptiveMultiplier } from "../../engine/curves";
 import { projectFutureTargets } from "../../engine/progression";
 import { scheduledDaysAsOf, weeklySkipLimitFor } from "../../engine/schedule";
 import { useCategories } from "../../hooks/useCategories";
@@ -38,7 +41,7 @@ import { getFreezesEnabled } from "../../services/settings";
 import { forfeitCurrentStreak } from "../../services/streaks";
 import { cardShadow, theme, UNCATEGORIZED_COLOR } from "../../theme";
 import { Category, Celebration, FreezeWindow, Goal, GoalSchedule, Habit, LoggedEntry, SkipLog, Streak } from "../../types";
-import { unitSuffix } from "../../utils/format";
+import { formatNumber, unitSuffix } from "../../utils/format";
 import { ManageStackParamList, HomeStackParamList } from "../../navigation/types";
 
 type Props = NativeStackScreenProps<ManageStackParamList & HomeStackParamList, "HabitDetail">;
@@ -57,12 +60,16 @@ export function HabitDetailScreen({ route, navigation }: Props) {
   const [skips, setSkips] = useState<SkipLog[]>([]);
   const [schedules, setSchedules] = useState<GoalSchedule[]>([]);
   const [achievements, setAchievements] = useState<Celebration[]>([]);
+  const [description, setDescription] = useState("");
   const { categories, refetch: refetchCategories } = useCategories();
 
   const [scheduleModalVisible, setScheduleModalVisible] = useState(false);
   const [editedDays, setEditedDays] = useState<number[]>([]);
   const [editedTimes, setEditedTimes] = useState<Record<number, DayTime>>({});
   const [editedNotifyOffSchedule, setEditedNotifyOffSchedule] = useState(true);
+  // Set only when the goal has a target — the day *count* is that goal's weekly quota (see
+  // tallyWeek), so it's locked until achieved, even though which days/times remain editable.
+  const [lockedDayCount, setLockedDayCount] = useState<number | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
   const [freezesEnabled, setFreezesEnabled] = useState(true);
 
@@ -70,6 +77,7 @@ export function HabitDetailScreen({ route, navigation }: Props) {
     const loadedHabit = await getHabit(habitId);
     if (!loadedHabit) return;
     setHabit(loadedHabit);
+    setDescription(loadedHabit.description ?? "");
 
     const loadedGoal = await getCurrentGoalForHabit(habitId);
     setGoal(loadedGoal);
@@ -119,6 +127,19 @@ export function HabitDetailScreen({ route, navigation }: Props) {
     [goal, habit, schedules, entries]
   );
 
+  // Step only drives progression for step-paced goals (no targetDate — see computeBaseTarget
+  // in progression.ts, which only reaches for goal.step on that branch). The only thing that
+  // can move this off the base value the user typed in is the adaptive plateau nudge
+  // (recomputed from recent hit history) — nothing else should touch it.
+  const stepInfo = useMemo(() => {
+    if (!goal || !habit || habit.type === "boolean" || goal.targetDate !== undefined) return null;
+    const multiplier = goal.adaptive ? adaptiveMultiplier(entries.map((e) => e.hit)) : 1;
+    const isRelative = goal.progressionMode === "relative";
+    const effective = goal.step * multiplier;
+    const format = (v: number) => (isRelative ? `${formatNumber(v * 100)}%` : `${formatNumber(v)}${unitSuffix(habit.unitLabel)}`);
+    return { base: format(goal.step), effective: format(effective), changed: format(effective) !== format(goal.step) };
+  }, [goal, habit, entries]);
+
   async function handleCategoryChange(categoryId: string | undefined) {
     await setHabitCategory(habitId, categoryId);
     refetch();
@@ -129,9 +150,22 @@ export function HabitDetailScreen({ route, navigation }: Props) {
     handleCategoryChange(category.id);
   }
 
-  async function openScheduleEditor() {
+  async function handleDescriptionBlur() {
+    await setHabitDescription(habitId, description.trim() || undefined);
+  }
+
+  async function handleAdaptiveChange(value: boolean) {
     if (!goal) return;
+    await setGoalAdaptive(goal.id, value);
+    refetch();
+  }
+
+  async function openScheduleEditor() {
+    if (!goal || !habit) return;
     setEditedDays(currentDays);
+    // Boolean goals always carry targetValue=1 as an implementation detail — no real goal
+    // to protect, so they never lock, same as a goalless numeric habit.
+    setLockedDayCount(habit.type !== "boolean" && goal.targetValue !== undefined ? currentDays.length : null);
     const savedTimes = await listGoalNotificationTimes(goal.id);
     setEditedTimes(notificationTimesToMap(savedTimes));
     setEditedNotifyOffSchedule(goal.notifyOffSchedule);
@@ -144,6 +178,7 @@ export function HabitDetailScreen({ route, navigation }: Props) {
 
   async function handleSaveSchedule() {
     if (!goal || editedDays.length === 0) return;
+    if (lockedDayCount !== null && editedDays.length !== lockedDayCount) return;
     await Promise.all([
       createGoalSchedule(goal.id, today(), editedDays),
       setGoalNotificationTimes(goal.id, notificationTimesFromMap(goal.id, editedDays, editedTimes)),
@@ -190,9 +225,11 @@ export function HabitDetailScreen({ route, navigation }: Props) {
   const scheduleSummary =
     currentDays.length === 7 ? "Every day" : currentDays.map((d) => DAY_NAMES[d]).join(", ");
   const summary = goal
-    ? `${goal.startValue}${goal.targetValue !== undefined ? ` → ${goal.targetValue}` : ""}${unit} · ${
-        goal.targetValue !== undefined ? goal.curveType : "open-ended"
-      }${goal.adaptive ? " · adaptive" : ""} · ${scheduleSummary}`
+    ? habit.type === "boolean"
+      ? scheduleSummary
+      : `${goal.startValue}${goal.targetValue !== undefined ? ` → ${goal.targetValue}` : ""}${unit} · ${
+          goal.targetValue !== undefined ? goal.curveType : "open-ended"
+        }${goal.adaptive ? " · adaptive" : ""} · ${scheduleSummary}`
     : undefined;
 
   return (
@@ -215,6 +252,53 @@ export function HabitDetailScreen({ route, navigation }: Props) {
                 onCategoryCreated={handleCategoryCreated}
               />
             </FieldGroup>
+
+            {/* Once achieved, the description is frozen like the rest of the goal's settled
+                state — and if there was never one, there's nothing worth inviting an edit to
+                an already-closed-out habit for. */}
+            {goal?.achievedAt ? (
+              description.length > 0 && (
+                <FieldGroup>
+                  <FieldLabel>Description</FieldLabel>
+                  <Text style={styles.descriptionLocked}>{description}</Text>
+                </FieldGroup>
+              )
+            ) : (
+              <FieldGroup>
+                <FieldLabel>Description</FieldLabel>
+                <TextField
+                  placeholder="Notes about this habit — why it matters, technique cues, anything you want to remember."
+                  value={description}
+                  onChangeText={setDescription}
+                  onBlur={handleDescriptionBlur}
+                  multiline
+                  numberOfLines={4}
+                  style={styles.description}
+                />
+              </FieldGroup>
+            )}
+
+            {stepInfo && (
+              <FieldGroup>
+                <FieldLabel>Step</FieldLabel>
+                <Text style={styles.stepValue}>
+                  {stepInfo.changed ? `${stepInfo.effective} (base ${stepInfo.base})` : stepInfo.base}
+                </Text>
+                {stepInfo.changed && <HintText>Adjusted from the base step by adaptive pacing.</HintText>}
+              </FieldGroup>
+            )}
+
+            {stepInfo && goal && (
+              <FieldGroup>
+                <View style={styles.switchRow}>
+                  <FieldLabel>Adaptive (plateau-aware pacing)</FieldLabel>
+                  <Switch value={goal.adaptive} onValueChange={handleAdaptiveChange} />
+                </View>
+                <HintText>
+                  Watches your last 5 entries. Hitting ≥80% of them pushes the pace up; ≤30% eases it back.
+                </HintText>
+              </FieldGroup>
+            )}
 
             {achievements.length > 0 && (
               <>
@@ -244,7 +328,7 @@ export function HabitDetailScreen({ route, navigation }: Props) {
                 {habit.type === "boolean" ? (
                   <HabitLogCalendar entries={entries} skips={skips} />
                 ) : (
-                  <ProgressChart
+                  <HabitProgressChart
                     entries={entries}
                     projectedTargets={projectedTargets}
                     targetValue={goal.targetValue}
@@ -280,13 +364,12 @@ export function HabitDetailScreen({ route, navigation }: Props) {
                   onPress={() => navigation.navigate("HabitGoalForm", { editGoalId: goal.id })}
                 />
                 <View style={styles.spacer} />
-                {/* Schedule doubles as the weekly quota (see tallyWeek) — once a goal has a
-                    target, the schedule locks with it until achieved. Goalless habits have
-                    no lock to defeat, so this stays free to edit. */}
-                <Button title="Edit Schedule" variant="secondary" onPress={openScheduleEditor} />
-                <View style={styles.spacer} />
               </>
             )}
+            {/* The day count doubles as the weekly quota (see tallyWeek) — once a goal has a
+                target, that count locks until achieved, but which days/times remain editable. */}
+            <Button title="Edit Schedule" variant="secondary" onPress={openScheduleEditor} />
+            <View style={styles.spacer} />
             {freezesEnabled && (
               <>
                 <Button
@@ -322,7 +405,9 @@ export function HabitDetailScreen({ route, navigation }: Props) {
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>Edit Schedule</Text>
               <HintText>
-                These are your check-in days — when you'll be reminded. You can log on any day and it still counts toward your weekly quota. Changes apply right away.
+                {lockedDayCount !== null
+                  ? `Which days you pick and their reminder times are yours to change — it's only the number of days (${lockedDayCount} this week) that's locked in, since that sets your weekly quota.`
+                  : "These are your check-in days — when you'll be reminded. You can log on any day and it still counts toward your weekly quota. Changes apply right away."}
               </HintText>
               <View style={styles.modalPickerSpacer}>
                 <ScheduleDayPicker
@@ -332,6 +417,11 @@ export function HabitDetailScreen({ route, navigation }: Props) {
                   onChangeTime={handleChangeNotificationTime}
                 />
               </View>
+              {lockedDayCount !== null && editedDays.length !== lockedDayCount && (
+                <HintText danger>
+                  Pick exactly {lockedDayCount} day{lockedDayCount === 1 ? "" : "s"} to save.
+                </HintText>
+              )}
               <HintText>Reminder times apply right away. Tap a time above to change it.</HintText>
               <View style={styles.offScheduleRow}>
                 <View style={styles.offScheduleText}>
@@ -344,7 +434,11 @@ export function HabitDetailScreen({ route, navigation }: Props) {
                 />
               </View>
               <View style={styles.modalButtonSpacer} />
-              <Button title="Save" onPress={handleSaveSchedule} disabled={editedDays.length === 0} />
+              <Button
+                title="Save"
+                onPress={handleSaveSchedule}
+                disabled={editedDays.length === 0 || (lockedDayCount !== null && editedDays.length !== lockedDayCount)}
+              />
               <View style={styles.spacer} />
               <Button title="Cancel" variant="secondary" onPress={() => setScheduleModalVisible(false)} />
             </View>
@@ -399,6 +493,37 @@ export function HabitDetailScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   list: {
     padding: 16,
+  },
+  // A light underline instead of TextField's default boxed/bordered look — this field is
+  // always sitting right there on the screen, editable anytime, so it should read more like
+  // a tappable label than a form input demanding to be filled in.
+  description: {
+    backgroundColor: "transparent",
+    borderBottomColor: theme.border,
+    borderBottomWidth: 1,
+    borderRadius: 0,
+    borderWidth: 0,
+    color: theme.text,
+    fontSize: 15,
+    height: 90,
+    paddingHorizontal: 0,
+    paddingVertical: 6,
+    textAlignVertical: "top",
+  },
+  descriptionLocked: {
+    color: theme.textMuted,
+    fontSize: 15,
+    lineHeight: 21,
+    paddingVertical: 4,
+  },
+  switchRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  stepValue: {
+    color: theme.text,
+    fontSize: 15,
   },
   achieved: {
     color: "#4CAF50",

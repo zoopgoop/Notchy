@@ -115,6 +115,11 @@ export async function setGoalOnIce(id: string, onIce: boolean): Promise<void> {
   await db.runAsync("UPDATE goals SET on_ice = ? WHERE id = ?", [onIce ? 1 : 0, id]);
 }
 
+export async function setGoalAdaptive(id: string, adaptive: boolean): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE goals SET adaptive = ? WHERE id = ?", [adaptive ? 1 : 0, id]);
+}
+
 /**
  * "Start Again" / "Adjust Habit" on the lost-streak/quota-gone prompt — makes this week
  * behave like the goal just started (see tallyWeek's effectiveStart), instead of staying
