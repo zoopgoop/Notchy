@@ -61,18 +61,6 @@ export function LogEntryScreen({ route, navigation }: Props) {
     habit !== null &&
     (isBoolean || !isNaN(parsedValue));
 
-  async function checkPacingAndFinish() {
-    if (goal && habit && goal.targetDate) {
-      const entries = await listEntriesByGoal(goal.id);
-      const mismatch = detectPacingMismatch(goal, habit, entries);
-      if (mismatch) {
-        setPacingMismatch(mismatch);
-        return;
-      }
-    }
-    navigation.goBack();
-  }
-
   async function handleSave() {
     if (!goal || !habit) return;
     setSaving(true);
@@ -95,13 +83,22 @@ export function LogEntryScreen({ route, navigation }: Props) {
         return;
       }
 
-      if (!entry.hit) {
-        setPendingEncouragement();
-        navigation.goBack();
-        return;
+      // Checked regardless of hit/miss — "struggling" is specifically about a run of
+      // recent misses, so gating this behind a hit (as it used to be) meant it could
+      // never fire in exactly the scenario it exists to catch.
+      if (goal.targetDate) {
+        const allEntries = await listEntriesByGoal(goal.id);
+        const mismatch = detectPacingMismatch(goal, habit, allEntries);
+        if (mismatch) {
+          setPacingMismatch(mismatch);
+          return;
+        }
       }
 
-      await checkPacingAndFinish();
+      if (!entry.hit) {
+        setPendingEncouragement();
+      }
+      navigation.goBack();
     } finally {
       setSaving(false);
     }

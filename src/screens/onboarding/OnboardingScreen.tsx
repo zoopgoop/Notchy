@@ -10,19 +10,27 @@ import { theme } from "../../theme";
 const INFO_STEPS = [
   {
     title: "Habits and goals are different things",
-    body: "A habit is the thing you keep doing — log it and watch your streak grow for as long as you like. A goal is optional: give it a target value or date and we'll work out exactly what to hit each day to get there. No target? Run it open-ended on streaks and daily targets alone, no finish line required.",
+    body: "A habit is the thing you keep doing — log it and watch your streak grow for as long as you like. A goal is optional: give it a target value or date and we'll work out exactly what to hit each day to get there. No target? Run it open-ended on streaks and daily targets alone, no finish line required. Yes/No habits skip all this — there's no number to hit, just a daily check-in.",
   },
   {
     title: "Scheduled days are just reminders",
     body: "Pick which days you want to be reminded on — but what actually keeps your streak alive is getting that many check-ins in somewhere across the week, on whichever days suit you. Missing a specific scheduled day doesn't matter as long as the week's total comes in. Hitting the exact daily target doesn't matter either — showing up is what counts.",
   },
   {
+    title: "Only the count locks in",
+    body: "Give a habit a real target or date and the number of check-ins per week locks — that's what your daily targets are paced against. Which days you pick and their reminder times stay yours to change anytime. Yes/No habits never lock at all, since there's no number being paced. And once you hit the goal, its date passes, or you make it open-ended, even the type — Numeric or Yes/No — is free to change.",
+  },
+  {
     title: "Protect your streak the right way",
-    body: "If the week's getting tight, we'll nudge you before it's too late, and offer to spend a skip to bail you out if you've got one spare. Skips and freeze windows are the sanctioned ways to protect a streak — deactivating a habit isn't. Set a goal and it's locked in until you hit it or its date passes; reaching it lets you adjust and keep the streak going, or call it complete and add it to your collection.",
+    body: "The moment a week's quota goes mathematically out of reach, we tell you straight away — not after the week's already over. Spend a skip to bail yourself out, start the week fresh, adjust the goal, or dismiss it and we'll go quiet on that habit until you log something or change it. Deactivating a habit isn't a streak-protection move — skips and freeze windows are.",
+  },
+  {
+    title: "Collect achievements as you go",
+    body: "Badges unlock automatically as you use the app — for streaks, variety, consistency, and more. No need to chase them on purpose; check what you've earned, and what's close, anytime in the Trophy Case tab.",
   },
   {
     title: "Managing a habit",
-    body: "Press and hold any habit — on Home or the Habits tab — to view its details, add a freeze window, or deactivate it. Deactivating doesn't delete anything, and you can reactivate from the same menu anytime.",
+    body: "Press and hold any habit — on Home or the Habits tab — to view its details, add a freeze window, or deactivate it. Deactivating doesn't delete anything, and you can reactivate from the same menu anytime. Add a description to jot down why a habit matters or any technique cues — it's plain notes, editable whenever you like.",
   },
 ];
 

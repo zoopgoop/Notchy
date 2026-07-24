@@ -78,6 +78,7 @@ export const ACHIEVEMENT_CATALOG: AchievementDef[] = [
   { key: "logs_500", family: "logs", title: "Half Grand", description: "Log 500 check-ins.", emoji: "🌟", target: 500 },
   { key: "logs_1000", family: "logs", title: "The Grind", description: "Log 1,000 check-ins.", emoji: "🏅", target: 1000 },
 
+  { key: "habits_1", family: "habits", title: "Getting Started", description: "Create your first habit.", emoji: "🌱", target: 1 },
   { key: "habits_3", family: "habits", title: "Building a Routine", description: "Create 3 habits.", emoji: "🧩", target: 3 },
   { key: "habits_5", family: "habits", title: "Habit Collector", description: "Create 5 habits.", emoji: "🗂️", target: 5 },
   { key: "habits_10", family: "habits", title: "Habit Hoarder", description: "Create 10 habits.", emoji: "📚", target: 10 },
@@ -164,11 +165,15 @@ async function computePerfectWeek(): Promise<boolean> {
   const thisWeekStart = weekStartOf(today());
   for (let i = 1; i <= PERFECT_WEEK_LOOKBACK; i++) {
     const weekStart = addDays(thisWeekStart, -7 * i);
-    const allMet = perGoalData.every(({ goal, entries, skips, freezeWindows, schedules }) => {
+    // required === 0 means this goal didn't exist yet that week (tallyWeek trims the
+    // window to createdAt) — that's a vacuous pass, not a real one, so a week only counts
+    // if every currently-active goal actually had a real quota to meet and met it. Without
+    // this, a goal created today would trivially "ace" every empty week before it existed.
+    const allExistedAndMet = perGoalData.every(({ goal, entries, skips, freezeWindows, schedules }) => {
       const tally = tallyWeek(schedules, goal, entries, skips, freezeWindows, weekStart);
-      return tally.credited >= tally.required;
+      return tally.required > 0 && tally.credited >= tally.required;
     });
-    if (allMet) return true;
+    if (allExistedAndMet) return true;
   }
   return false;
 }
@@ -235,6 +240,7 @@ export async function evaluateAchievements(): Promise<EvaluateAchievementsResult
   check("logs_1000", totalLogs >= 1000);
 
   currentByFamily.set("habits", totalHabits);
+  check("habits_1", totalHabits >= 1);
   check("habits_3", totalHabits >= 3);
   check("habits_5", totalHabits >= 5);
   check("habits_10", totalHabits >= 10);

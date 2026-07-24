@@ -45,7 +45,7 @@ export function CategoryPicker({
               onPress={() => onChange(selected ? undefined : category.id)}
               style={[styles.chip, selected && { backgroundColor: category.color, borderColor: category.color }]}
             >
-              <View style={[styles.dot, { backgroundColor: category.color }]} />
+              <View style={[styles.dot, { backgroundColor: category.color }, selected && styles.dotSelected]} />
               <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{category.name}</Text>
             </Pressable>
           );
@@ -98,6 +98,10 @@ const styles = StyleSheet.create({
     height: 10,
     marginRight: 6,
     width: 10,
+  },
+  dotSelected: {
+    borderColor: theme.background,
+    borderWidth: 1.5,
   },
   chipText: {
     color: theme.textMuted,
