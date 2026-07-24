@@ -295,7 +295,7 @@ export function HabitDetailScreen({ route, navigation }: Props) {
                   <Switch value={goal.adaptive} onValueChange={handleAdaptiveChange} />
                 </View>
                 <HintText>
-                  Watches your last 5 entries. Hitting ≥80% of them pushes the pace up; ≤30% eases it back.
+                  Watches your last 5 entries. Hitting ≥80% of them pushes the pace up; ≤40% eases it back.
                 </HintText>
               </FieldGroup>
             )}

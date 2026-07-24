@@ -533,7 +533,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
                 <Switch value={adaptive} onValueChange={setAdaptive} />
               </View>
               <HintText>
-                Watches your last 5 entries. Hitting ≥80% of them pushes the pace up; ≤30% eases it back.
+                Watches your last 5 entries. Hitting ≥80% of them pushes the pace up; ≤40% eases it back.
               </HintText>
             </FieldGroup>
           )}
