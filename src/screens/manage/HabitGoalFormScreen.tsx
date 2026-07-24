@@ -23,6 +23,7 @@ import {
   listGoalSchedules,
   setGoalNotificationTimes,
   setHabitCategory,
+  setHabitDescription,
   updateGoal,
   updateHabit,
 } from "../../db/repositories";
@@ -108,6 +109,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
   const [type, setType] = useState<HabitType>("numeric");
   const [manualDirection, setManualDirection] = useState<Direction>("increasing");
   const [unitLabel, setUnitLabel] = useState("");
+  const [description, setDescription] = useState("");
 
   // Goal fields
   const [startValue, setStartValue] = useState("");
@@ -123,11 +125,18 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
   const [notificationTimes, setNotificationTimes] = useState<Record<number, DayTime>>({});
   const [saving, setSaving] = useState(false);
   const [confirmCommit, setConfirmCommit] = useState(false);
-  // Whether the goal we loaded already had a target and wasn't achieved — the schedule
-  // doubles as the weekly quota (see tallyWeek), so once a goal is set it locks in until
-  // achieved, same as the rest of its pacing. Fixed at load time, not from live form state,
-  // so flipping "Open-ended" mid-edit can't be used to sneak the schedule back open.
+  // Whether the goal we loaded already had a target and wasn't achieved — fixed at load time,
+  // not from live form state, so flipping "Open-ended" mid-edit can't be used to sneak the
+  // schedule back open. Which days are picked and their reminder times stay freely editable
+  // even while locked — only the *count* of scheduled days is locked, since that's what
+  // actually doubles as the weekly quota (see tallyWeek). lockedDayCount is that count.
   const [scheduleLocked, setScheduleLocked] = useState(false);
+  const [lockedDayCount, setLockedDayCount] = useState<number | null>(null);
+  // Switching type mid-progression would strand a half-finished numeric curve (or vice
+  // versa) — only safe once there's no active progression left to strand: the goal's
+  // already achieved, its date has passed, or it was never date/target-bound to begin
+  // with (goalless numeric, or boolean — which has no real "goal" in this sense either).
+  const [canChangeType, setCanChangeType] = useState(true);
 
   useEffect(() => {
     if (!editGoalId) return;
@@ -147,6 +156,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
       setManualDirection(habit.direction ?? "increasing");
       setUnitLabel(habit.unitLabel ?? "");
       setCategoryId(habit.categoryId);
+      setDescription(habit.description ?? "");
 
       // After achievement: old target becomes new starting point, new target left blank.
       if (goal.achievedAt && goal.targetValue !== undefined) {
@@ -158,14 +168,23 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
         setOpenEnded(goal.targetValue === undefined);
         if (goal.targetValue !== undefined) setTargetValue(String(goal.targetValue));
       }
-      setScheduleLocked(goal.targetValue !== undefined && !goal.achievedAt);
+      // Boolean goals always carry targetValue=1 as an implementation detail (it just means
+      // "done"), not a real goal to protect — so they never lock, same as a goalless habit.
+      const isLocked = habit.type !== "boolean" && goal.targetValue !== undefined && !goal.achievedAt;
+      setScheduleLocked(isLocked);
+      const currentDays = scheduledDaysAsOf(schedules, today());
+      setLockedDayCount(isLocked ? currentDays.length : null);
+      const dateComplete = goal.targetDate !== undefined && goal.targetDate < today();
+      setCanChangeType(
+        habit.type === "boolean" || goal.targetValue === undefined || goal.achievedAt !== undefined || dateComplete
+      );
       setPacingMode(goal.targetDate ? "date" : "step");
       if (goal.targetDate) setTargetDate(new Date(goal.targetDate));
       setCurveType(goal.curveType === "linear" ? "linear" : goal.curveType === "exponential" ? "exponential" : "incremental");
       setAdaptive(goal.adaptive);
       setProgressionMode(goal.progressionMode);
       setStep(String(goal.step));
-      setScheduledDays(scheduledDaysAsOf(schedules, today()));
+      setScheduledDays(currentDays);
       setNotificationTimes(notificationTimesToMap(savedTimes));
       setLoading(false);
     })();
@@ -175,6 +194,9 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
   const isBoolean = type === "boolean";
   const usesDate = pacingMode === "date";
   const hasTarget = usesDate || !openEnded;
+  // scheduleLocked itself is only set once, at load — but if the user flips Type to
+  // boolean mid-edit, the lock needs to fall away immediately, not just after saving.
+  const effectiveScheduleLocked = scheduleLocked && !isBoolean;
 
   // Numeric habits (reps, sessions, etc.) are whole-number-only — see progression.ts.
   const parsedStart = parseInt(startValue, 10);
@@ -195,6 +217,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
     !loading &&
     name.trim().length > 0 &&
     scheduledDays.length > 0 &&
+    (!effectiveScheduleLocked || scheduledDays.length === lockedDayCount) &&
     (isBoolean ||
       (!isNaN(parsedStart) &&
         (!hasTarget || (!isNaN(parsedTarget) && parsedTarget !== parsedStart)) &&
@@ -291,6 +314,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
           unitLabel: isBoolean ? undefined : unitLabel.trim() || undefined,
         });
         await setHabitCategory(habitId, categoryId);
+        await setHabitDescription(habitId, description.trim() || undefined);
         await updateGoal(editGoalId, goalFields);
         if (!hasTarget) await clearGoalTarget(editGoalId);
         // Editing here only happens via "Edit & Keep Going" off the achievement prompt, or
@@ -309,6 +333,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
           type,
           direction: needsDirection ? direction : undefined,
           unitLabel: isBoolean ? undefined : unitLabel.trim() || undefined,
+          description: description.trim() || undefined,
         });
 
         const goal = await createGoal({
@@ -329,9 +354,10 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
   }
 
   function handleSave() {
-    // Nothing new to warn about if there's no target, or the goal was already locked in
-    // (this same save can't lock anything further than it already is).
-    if (!hasTarget || (isEditMode && scheduleLocked)) {
+    // Nothing new to warn about if there's no target, the goal was already locked in
+    // (this same save can't lock anything further than it already is), or it's a boolean
+    // habit (no progression curve or weekly quota to protect, so nothing ever locks).
+    if (isBoolean || !hasTarget || effectiveScheduleLocked) {
       performSave();
       return;
     }
@@ -361,11 +387,29 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
       </FieldGroup>
 
       <FieldGroup>
+        <FieldLabel>Description (optional)</FieldLabel>
+        <TextField
+          placeholder="Notes about this habit — why it matters, technique cues, anything you want to remember."
+          value={description}
+          onChangeText={setDescription}
+          multiline
+          numberOfLines={3}
+          style={styles.description}
+        />
+      </FieldGroup>
+
+      <FieldGroup>
         <FieldLabel>Type</FieldLabel>
-        {isEditMode ? (
-          <Text style={styles.readOnlyValue}>{TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type}</Text>
-        ) : (
+        {canChangeType ? (
           <ChipSelector options={TYPE_OPTIONS} value={type} onChange={setType} />
+        ) : (
+          <>
+            <Text style={styles.readOnlyValue}>{TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type}</Text>
+            <HintText>
+              Locked while this goal is in progress — free to change once it's achieved, its date
+              passes, or you make it open-ended.
+            </HintText>
+          </>
         )}
       </FieldGroup>
       {!isBoolean && (
@@ -393,27 +437,28 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
           </View>
 
           <FieldGroup>
-            <FieldLabel>Pacing</FieldLabel>
-            <ChipSelector options={PACING_OPTIONS} value={pacingMode} onChange={setPacingMode} />
+            <View style={styles.switchRow}>
+              <FieldLabel>Open-ended (no end goal)</FieldLabel>
+              <Switch
+                value={openEnded}
+                onValueChange={(value) => {
+                  setOpenEnded(value);
+                  // A date-paced goal always has an end goal by definition — force step
+                  // pacing so the Pacing choice below (hidden while open-ended) can't
+                  // silently contradict the toggle next time it's revealed.
+                  if (value) setPacingMode("step");
+                }}
+                disabled={effectiveScheduleLocked}
+              />
+            </View>
+            <HintText>
+              {openEnded
+                ? "Runs forever on streaks and daily targets alone, with no finish line — your schedule stays fully unlocked, so you can change the days (and how many) anytime."
+                : effectiveScheduleLocked
+                  ? `This has an end goal, so the number of days you check in each week (${lockedDayCount}) is locked in until you achieve it or its date passes.`
+                  : "This has an end goal — once you save, the number of days you check in each week locks in until you achieve it."}
+            </HintText>
           </FieldGroup>
-
-          {!usesDate && (
-            <FieldGroup>
-              <View style={styles.switchRow}>
-                <FieldLabel>Open-ended (no end goal)</FieldLabel>
-                <Switch
-                  value={openEnded}
-                  onValueChange={setOpenEnded}
-                  disabled={isEditMode && scheduleLocked}
-                />
-              </View>
-              <HintText>
-                {isEditMode && scheduleLocked
-                  ? "Locked with the rest of this goal's schedule until you achieve it (or its date passes)."
-                  : "Runs forever on streaks and daily targets alone, with no finish line. You can change this to a goal — or back — anytime, since there's nothing to lock in without one."}
-              </HintText>
-            </FieldGroup>
-          )}
 
           {hasTarget ? (
             <FieldGroup>
@@ -430,6 +475,13 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
               <FieldLabel>Direction</FieldLabel>
               <ChipSelector options={DIRECTION_OPTIONS} value={manualDirection} onChange={setManualDirection} />
               <HintText>With no goal to compare against, you need to say which way counts as progress.</HintText>
+            </FieldGroup>
+          )}
+
+          {!openEnded && (
+            <FieldGroup>
+              <FieldLabel>Pacing</FieldLabel>
+              <ChipSelector options={PACING_OPTIONS} value={pacingMode} onChange={setPacingMode} />
             </FieldGroup>
           )}
 
@@ -481,7 +533,7 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
                 <Switch value={adaptive} onValueChange={setAdaptive} />
               </View>
               <HintText>
-                Watches your last 7 entries. Hitting ≥80% of them pushes the pace up; ≤30% eases it back.
+                Watches your last 5 entries. Hitting ≥80% of them pushes the pace up; ≤30% eases it back.
               </HintText>
             </FieldGroup>
           )}
@@ -500,18 +552,23 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
 
       <Text style={styles.sectionHeader}>Schedule</Text>
       <FieldGroup>
-        <FieldLabel>Days you'll log on</FieldLabel>
         <ScheduleDayPicker
           days={scheduledDays}
           onChangeDays={setScheduledDays}
           times={notificationTimes}
           onChangeTime={handleChangeNotificationTime}
-          disabled={isEditMode && scheduleLocked}
         />
+        {effectiveScheduleLocked && scheduledDays.length !== lockedDayCount && (
+          <HintText danger>
+            Pick exactly {lockedDayCount} day{lockedDayCount === 1 ? "" : "s"} to save.
+          </HintText>
+        )}
         <HintText>
-          {isEditMode && scheduleLocked
-            ? "How many days you pick here sets your weekly quota, so it's locked in until you achieve this goal (or its date passes) — the only other way to change it is deleting this habit and starting over."
-            : "These are your check-in days — when you'll be reminded. You can log on any day and it still counts toward your weekly quota. Once you save a goal, this locks in until you achieve it."}
+          {usesDate
+            ? effectiveScheduleLocked
+              ? `Which days you pick and their reminder times are yours to change — it's only the number of days (${lockedDayCount} this week) that's locked in, since that's what sets your weekly quota.`
+              : "Once you save, the number of days you check in each week locks in until you achieve this goal or its date passes. You can still change which days and their reminder times."
+            : "These are your check-in days — when you'll be reminded. You can log on any day and it still counts toward your weekly quota."}
         </HintText>
       </FieldGroup>
 
@@ -519,8 +576,8 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
 
       <ConfirmDialog
         visible={confirmCommit}
-        title="Lock in your schedule?"
-        message="Once saved, your check-in schedule (and whether this stays open-ended) is locked until you achieve this goal or its date passes. The only other way to change it is deleting this habit and starting over."
+        title="Lock in your weekly quota?"
+        message="Once saved, you won't be able to switch this back to open-ended, and the number of days per week is locked, until you achieve this goal (or its date passes). You'll still be able to change which days and reminder times — just not how many. Ready to lock it in?"
         confirmLabel="Confirm"
         cancelLabel="Cancel"
         onConfirm={() => {
@@ -539,6 +596,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     paddingVertical: 4,
+  },
+  description: {
+    height: 80,
+    paddingTop: 8,
+    textAlignVertical: "top",
   },
   switchRow: {
     alignItems: "center",
