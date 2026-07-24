@@ -86,4 +86,4 @@ Each goal has a `curveType` (linear / incremental / exponential / percentage) an
 2. The adaptive multiplier — if hit-rate over the last 7 entries is ≥ 80%, pace goes up 20%; if ≤ 30%, it eases back 30%
 3. Three consecutive misses trigger a deload (target steps back ~20% toward start value)
 
-For open-ended habits (no target date or value), a decaying-step recurrence runs indefinitely.
+For open-ended habits (no target date), the target moves by a fixed step each hit — only the user (editing the step) or the adaptive multiplier can change it.

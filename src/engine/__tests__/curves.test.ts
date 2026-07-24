@@ -1,12 +1,12 @@
 import {
   adaptiveMultiplier,
-  decayingStepTarget,
   deloadTarget,
   exponentialTarget,
   incrementalTarget,
   isHit,
   linearTarget,
   percentageTarget,
+  stepTarget,
 } from "../curves";
 
 describe("linearTarget", () => {
@@ -63,16 +63,14 @@ describe("percentageTarget", () => {
   });
 });
 
-describe("decayingStepTarget", () => {
-  it("applies a full step on the first session and decays thereafter", () => {
-    expect(decayingStepTarget(50, 2, 0, "increasing")).toBeCloseTo(52);
-    const laterStep = decayingStepTarget(50, 2, 10, "increasing") - 50;
-    expect(laterStep).toBeLessThan(2);
-    expect(laterStep).toBeGreaterThan(0);
+describe("stepTarget", () => {
+  it("applies the full step every time, regardless of session count", () => {
+    expect(stepTarget(50, 2, "increasing")).toBeCloseTo(52);
+    expect(stepTarget(50, 2, "increasing")).toBeCloseTo(stepTarget(50, 2, "increasing"));
   });
 
   it("steps downward for decreasing goals", () => {
-    expect(decayingStepTarget(50, 2, 0, "decreasing")).toBeCloseTo(48);
+    expect(stepTarget(50, 2, "decreasing")).toBeCloseTo(48);
   });
 });
 

@@ -18,7 +18,7 @@ export const ADAPTIVE_EASE_MULTIPLIER = 0.7;
 export const ADAPTIVE_HIT_RATE_BOOST_THRESHOLD = 0.8;
 export const ADAPTIVE_HIT_RATE_EASE_THRESHOLD = 0.3;
 export const ADAPTIVE_MIN_SAMPLE = 3;
-export const ADAPTIVE_WINDOW = 7;
+export const ADAPTIVE_WINDOW = 5;
 export const DELOAD_EASE_FRACTION = 0.2;
 export const CONSECUTIVE_MISSES_FOR_DELOAD = 3;
 
@@ -109,18 +109,13 @@ export function percentageTarget(
 }
 
 /**
- * Open-ended fallback for static progressionMode with no target date: a fixed step
- * that itself decays per session, so progress still tapers off naturally.
+ * Open-ended fallback for static progressionMode with no target date: advances by the
+ * goal's configured step every hit. The only things that should move this number are the
+ * user (editing the step) and the adaptive multiplier (easing or boosting it based on
+ * recent performance) — no implicit taper based on session count.
  */
-export function decayingStepTarget(
-  lastValue: number,
-  baseStep: number,
-  sessionsLogged: number,
-  direction: Direction,
-  decay: number = 0.98
-): number {
-  const step = baseStep * Math.pow(decay, sessionsLogged);
-  return lastValue + directionSign(direction) * step;
+export function stepTarget(lastValue: number, baseStep: number, direction: Direction): number {
+  return lastValue + directionSign(direction) * baseStep;
 }
 
 /**

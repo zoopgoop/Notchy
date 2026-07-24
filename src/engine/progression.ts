@@ -4,7 +4,6 @@ import { today } from "./dateUtils";
 import {
   adaptiveMultiplier,
   CONSECUTIVE_MISSES_FOR_DELOAD,
-  decayingStepTarget,
   deloadTarget,
   exponentialTarget,
   incrementalTarget,
@@ -12,6 +11,7 @@ import {
   linearTarget,
   percentageTarget,
   requireDirection,
+  stepTarget,
 } from "./curves";
 
 export type TargetReason = "boolean" | "initial" | "advance" | "hold" | "deload";
@@ -56,17 +56,21 @@ function computeBaseTarget(
     return percentageTarget(anchorValue, goal.step * multiplier, direction);
   }
 
-  return decayingStepTarget(anchorValue, goal.step * multiplier, entries.length, direction);
+  return stepTarget(anchorValue, goal.step * multiplier, direction);
 }
 
 /**
  * Numeric habits are whole-number-only by design (reps, sessions, etc. don't have
  * fractional units) — rounding here, the one chokepoint every generated target passes
  * through, is simpler than rounding at each of the call sites below. Goalless habits
- * have no targetValue to clamp toward, so progress is unbounded.
+ * have no targetValue to clamp toward, so growth is unbounded — but a decreasing
+ * goalless habit (screen time, cigarettes, etc.) still can't sensibly target below
+ * zero, so it gets a floor even without an explicit target.
  */
 function clampTowardTarget(value: number, goal: Goal, direction: Direction): number {
-  if (goal.targetValue === undefined) return Math.round(value);
+  if (goal.targetValue === undefined) {
+    return Math.round(direction === "decreasing" ? Math.max(value, 0) : value);
+  }
   const clamped = direction === "increasing" ? Math.min(value, goal.targetValue) : Math.max(value, goal.targetValue);
   return Math.round(clamped);
 }
@@ -122,6 +126,22 @@ export function generateNextTarget(
 }
 
 const PROJECTED_SAMPLE_COUNT = 24;
+// Safety ceiling for the "keep simulating until the goal is actually reached" case below —
+// far more than any reasonable step size should ever need, so it only bites when the step
+// is so small relative to the distance remaining that the goal is essentially unreachable.
+const MAX_SAMPLES_TOWARD_TARGET = 200;
+// A truly goalless habit's preview window, deliberately much shorter than
+// PROJECTED_SAMPLE_COUNT. Each entry here is a real simulated session (one hit = one step),
+// unlike the date-driven branch below where samples are just evenly-spaced curve evaluations
+// over calendar time — so this count directly sets how many sessions the chart's projected
+// line covers. ProgressChart budgets ~8 projected slots in the common case (MAX_TOTAL_POINTS
+// minus MAX_REAL_POINTS); staying close to that means its downsample() has little left to
+// compress, so each visual step stays close to one real session instead of several averaged
+// together — which used to make the projected line's gradient look like it jumped right at
+// "today" even though the underlying per-session rate hadn't actually changed. Left a
+// touch above that budget (rather than an exact match) so there's still a little real
+// texture for downsample() to work with instead of a perfectly rigid 1:1 mapping.
+const GOALLESS_PROJECTION_SESSIONS = 12;
 
 /**
  * Returns projected targets for future sessions, starting from the current anchor
@@ -170,11 +190,17 @@ export function projectFutureTargets(
     return results;
   }
 
-  // Open-ended: simulate forward assuming hits
+  // Open-ended: simulate forward assuming hits. A goal with a real targetValue but no
+  // date (step-paced toward an end goal) should visually finish exactly at that value —
+  // a flat GOALLESS_PROJECTION_SESSIONS cutoff can land short of it while the step is still
+  // closing the gap, so keep simulating (with a generous safety ceiling in case the step's
+  // too small to ever actually reach it) until the clamp is actually hit. A truly goalless
+  // habit has no such endpoint to reach, so it keeps the short fixed preview window instead.
   const todayStr = today();
   const simulatedEntries = [...entries];
   const results: number[] = [];
-  for (let i = 0; i < PROJECTED_SAMPLE_COUNT; i++) {
+  const sampleCount = goal.targetValue !== undefined ? MAX_SAMPLES_TOWARD_TARGET : GOALLESS_PROJECTION_SESSIONS;
+  for (let i = 0; i < sampleCount; i++) {
     const { target } = generateNextTarget(goal, habit, schedules, simulatedEntries, todayStr);
     results.push(target);
     simulatedEntries.push({
@@ -186,6 +212,7 @@ export function projectFutureTargets(
       hit: true,
       tagIds: [],
     } as LoggedEntry);
+    if (goal.targetValue !== undefined && target === goal.targetValue) break;
   }
   return results;
 }
