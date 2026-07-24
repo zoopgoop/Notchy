@@ -7,7 +7,7 @@ import { AchievementToast } from "../../components/celebration/AchievementToast"
 import { CelebrationOverlay } from "../../components/celebration/CelebrationOverlay";
 import { EncouragementToast } from "../../components/celebration/EncouragementToast";
 import { HabitLogCalendar } from "../../components/charts/HabitLogCalendar";
-import { ProgressChart } from "../../components/charts/ProgressChart";
+import { HabitProgressChart } from "../../components/charts/HabitProgressChart";
 import { ActionSheet, ActionSheetOption } from "../../components/ui/ActionSheet";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { PageTitle, Screen } from "../../components/ui/Screen";
@@ -76,6 +76,19 @@ function FilterPill({ label, active, onPress }: { label: string; active: boolean
       <Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text>
     </Pressable>
   );
+}
+
+function emptyMessage(totalHabits: number, activeFilter: string): string {
+  if (totalHabits === 0) {
+    return "Nothing to track yet. Tap + to create your first habit — log it daily and watch your progress build in Calendar and Trophy Case.";
+  }
+  if (activeFilter === "urgent") {
+    return "Nothing urgent right now. Habits land here when they're overdue, at risk of losing a streak, or behind on their weekly quota.";
+  }
+  if (activeFilter === "new") {
+    return "No new habits. Habits show up here for their first week, then move back in with the rest.";
+  }
+  return "No habits in this category yet. Open a habit's details to assign it a category.";
 }
 
 function formatNextDue(nextDue: string | null): string | null {
@@ -226,8 +239,8 @@ export function HomeScreen({ navigation }: Props) {
     }
   }
 
-  /** Deselecting a Yes/No habit just removes today's entry — nothing meaningful to "edit". */
-  async function handleUndoYes(view: DailyGoalView) {
+  /** Deletes today's entry and recomputes the streak as if it were never logged. */
+  async function handleRemoveLog(view: DailyGoalView) {
     if (view.status.kind !== "logged") return;
     await deleteEntry(view.status.entry.id);
     await recomputeStreak(view.goal);
@@ -268,28 +281,32 @@ export function HomeScreen({ navigation }: Props) {
     refetch();
   }
 
+  // Clearing lossPrompt before the restart's refetch lands would re-render with a still-stale
+  // items list — the reopening effect below sees the same still-quota-gone view and pops the
+  // prompt right back up, so it looks like the button needs a second press to "take". Awaiting
+  // refetch() before clearing means items are already fresh by the time lossPrompt goes null.
   async function handleStartAgainAfterLoss() {
     if (!lossPrompt) return;
     const goalId = lossPrompt.view.goal.id;
     const hadStreak = lossPrompt.hadStreak;
-    setLossPrompt(null);
     await restartGoalWeek(goalId, today());
     if (hadStreak) await recordRestartedStreak();
-    refetch();
+    await refetch();
+    setLossPrompt(null);
   }
 
   async function handleAdjustHabitAfterLoss(view: DailyGoalView) {
     const hadStreak = lossPrompt?.hadStreak ?? false;
-    setLossPrompt(null);
     await restartGoalWeek(view.goal.id, today());
     if (hadStreak) await recordRestartedStreak();
+    setLossPrompt(null);
     navigation.navigate("HabitGoalForm", { editGoalId: view.goal.id });
   }
 
   async function handleDismissLossPrompt(view: DailyGoalView) {
-    setLossPrompt(null);
     await setGoalOnIce(view.goal.id, true);
-    refetch();
+    await refetch();
+    setLossPrompt(null);
   }
 
   const actionSheetOptions: ActionSheetOption[] = actionSheetView
@@ -364,7 +381,7 @@ export function HomeScreen({ navigation }: Props) {
             skipsEnabled={skipsEnabled}
             onLog={() => navigation.navigate("LogEntry", { goalId: item.goal.id })}
             onYes={() => handleYes(item)}
-            onUndoYes={() => handleUndoYes(item)}
+            onRemoveLog={() => handleRemoveLog(item)}
             onSkip={() => setDialog({ kind: "skipConfirm", view: item })}
             onSkipInfo={() => setDialog({ kind: "skipInfo", view: item })}
             onMenu={() => handleLongPress(item)}
@@ -398,12 +415,7 @@ export function HomeScreen({ navigation }: Props) {
             </View>
           ) : null
         }
-        ListEmptyComponent={
-          <Text style={styles.empty}>
-            Nothing to track yet. Tap + to create your first habit — log it daily and watch your
-            progress build in Calendar and Trophy Case.
-          </Text>
-        }
+        ListEmptyComponent={<Text style={styles.empty}>{emptyMessage(items.length, activeFilter)}</Text>}
       />
       <Pressable
         style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
@@ -560,7 +572,7 @@ function GoalCard({
   skipsEnabled,
   onLog,
   onYes,
-  onUndoYes,
+  onRemoveLog,
   onSkip,
   onSkipInfo,
   onMenu,
@@ -569,7 +581,7 @@ function GoalCard({
   skipsEnabled: boolean;
   onLog: () => void;
   onYes: () => void;
-  onUndoYes: () => void;
+  onRemoveLog: () => void;
   onSkip: () => void;
   onSkipInfo: () => void;
   onMenu: () => void;
@@ -682,7 +694,7 @@ function GoalCard({
         {nextDueLabel && !isOverdue && !isOnIce && <Text style={styles.metaText}>Next due: {nextDueLabel}</Text>}
       </View>
       {isUrgentToday && streak.current > 0 && (
-        <Text style={styles.urgentText}>⚠️ Complete a check-in today to keep your streak alive!</Text>
+        <Text style={styles.urgentText}>⚠️ Check in today to keep your streak alive!</Text>
       )}
       {isOverdue && !isUrgentToday && (
         <Text style={styles.overdueText}>⚠️ Overdue — you're behind this week. Check in today to catch up.</Text>
@@ -695,7 +707,14 @@ function GoalCard({
           ) : habit.type === "boolean" ? (
             <HabitLogCalendar entries={entries} skips={skips} />
           ) : (
-            <ProgressChart entries={entries} targetValue={goal.targetValue} color={color} unit={unit} projectedTargets={projectedTargets} />
+            <HabitProgressChart
+              entries={entries}
+              targetValue={goal.targetValue}
+              color={color}
+              unit={unit}
+              projectedTargets={projectedTargets}
+              todayTarget={status.kind === "pending" ? status.target : undefined}
+            />
           )}
         </View>
       )}
@@ -729,12 +748,29 @@ function GoalCard({
               </Text>
             )}
           </View>
-          <Pressable
-            style={({ pressed }) => [styles.logAgainButton, pressed && styles.logAgainPressed]}
-            onPress={habit.type === "boolean" ? onUndoYes : onLog}
-          >
-            <Text style={styles.logAgainText}>{habit.type === "boolean" ? "Reset Log" : "Edit Log"}</Text>
-          </Pressable>
+          {habit.type === "boolean" ? (
+            <Pressable
+              style={({ pressed }) => [styles.logAgainButton, pressed && styles.logAgainPressed]}
+              onPress={onRemoveLog}
+            >
+              <Text style={styles.logAgainText}>Reset Log</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.logAgainRow}>
+              <Pressable
+                style={({ pressed }) => [styles.logAgainButton, pressed && styles.logAgainPressed]}
+                onPress={onLog}
+              >
+                <Text style={styles.logAgainText}>Edit Log</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.logAgainButton, pressed && styles.logAgainPressed]}
+                onPress={onRemoveLog}
+              >
+                <Text style={styles.removeLogText}>Remove Log</Text>
+              </Pressable>
+            </View>
+          )}
         </>
       )}
 
@@ -929,11 +965,8 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   chartBox: {
-    borderTopColor: theme.border,
-    borderTopWidth: 1,
     marginBottom: 14,
     marginTop: 12,
-    paddingTop: 12,
   },
   dot: {
     borderRadius: 6,
@@ -971,6 +1004,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
   },
+  logAgainRow: {
+    flexDirection: "row",
+    gap: 16,
+  },
   logAgainButton: {
     alignSelf: "flex-start",
     marginTop: 8,
@@ -980,6 +1017,11 @@ const styles = StyleSheet.create({
   },
   logAgainText: {
     color: theme.primary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  removeLogText: {
+    color: theme.danger,
     fontSize: 13,
     fontWeight: "700",
   },
