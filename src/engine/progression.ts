@@ -141,7 +141,7 @@ const MAX_SAMPLES_TOWARD_TARGET = 200;
 // "today" even though the underlying per-session rate hadn't actually changed. Left a
 // touch above that budget (rather than an exact match) so there's still a little real
 // texture for downsample() to work with instead of a perfectly rigid 1:1 mapping.
-const GOALLESS_PROJECTION_SESSIONS = 12;
+const GOALLESS_PROJECTION_SESSIONS = 10;
 
 /**
  * Returns projected targets for future sessions, starting from the current anchor
