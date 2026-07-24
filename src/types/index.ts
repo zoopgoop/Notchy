@@ -29,6 +29,8 @@ export interface Habit {
   direction?: Direction;
   unitLabel?: string;
   createdAt: string;
+  /** Free-text notes — purely descriptive, editable anytime regardless of goal lock state. */
+  description?: string;
 }
 
 /**

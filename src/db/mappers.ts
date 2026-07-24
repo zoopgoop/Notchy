@@ -35,6 +35,7 @@ export interface HabitRow {
   direction: string | null;
   unit_label: string | null;
   created_at: string;
+  description: string | null;
 }
 
 export function rowToHabit(row: HabitRow): Habit {
@@ -46,6 +47,7 @@ export function rowToHabit(row: HabitRow): Habit {
     direction: (row.direction as Direction) ?? undefined,
     unitLabel: row.unit_label ?? undefined,
     createdAt: row.created_at,
+    description: row.description ?? undefined,
   };
 }
 

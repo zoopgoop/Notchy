@@ -7,7 +7,7 @@ export async function createHabit(input: Omit<Habit, "id" | "createdAt">): Promi
   const db = await getDb();
   const habit: Habit = { id: generateId(), createdAt: new Date().toISOString(), ...input };
   await db.runAsync(
-    "INSERT INTO habits (id, category_id, name, type, direction, unit_label, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO habits (id, category_id, name, type, direction, unit_label, created_at, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     [
       habit.id,
       habit.categoryId ?? null,
@@ -16,6 +16,7 @@ export async function createHabit(input: Omit<Habit, "id" | "createdAt">): Promi
       habit.direction ?? null,
       habit.unitLabel ?? null,
       habit.createdAt,
+      habit.description ?? null,
     ]
   );
   return habit;
@@ -68,6 +69,12 @@ export async function updateHabit(
   if (updates.type !== undefined) {
     await db.runAsync("UPDATE habits SET type = ? WHERE id = ?", [updates.type, id]);
   }
+}
+
+/** Separate from updateHabit since an empty description (clearing it) is a meaningful value, not "leave as-is". */
+export async function setHabitDescription(id: string, description: string | undefined): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE habits SET description = ? WHERE id = ?", [description ?? null, id]);
 }
 
 /** Separate from updateHabit since `undefined` here is a meaningful value (uncategorize), not "leave as-is". */

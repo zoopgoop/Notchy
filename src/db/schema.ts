@@ -258,6 +258,12 @@ export const MIGRATIONS: string[] = [
     earned_at TEXT NOT NULL
   );
   `,
+  `
+  -- Free-text notes about a habit (why it matters, technique cues, etc.) — purely
+  -- descriptive, never read by any engine/streak logic, so it's editable anytime
+  -- regardless of whether the goal itself is locked in.
+  ALTER TABLE habits ADD COLUMN description TEXT;
+  `,
 ];
 
 export const BUILT_IN_TAGS = ["Tired", "Sore"];
