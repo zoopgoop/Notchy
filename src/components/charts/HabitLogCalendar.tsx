@@ -16,6 +16,7 @@ import { LoggedEntry, SkipLog } from "../../types";
 
 /** Fixed, not category-colored — category color is reserved for the multi-habit Calendar tab. */
 const LOGGED_COLOR = "#4CAF50";
+const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
 function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -36,8 +37,8 @@ export function HabitLogCalendar({ entries, skips }: { entries: LoggedEntry[]; s
   const loggedDates = new Set(entries.map((e) => e.date));
   const skippedDates = new Set(skips.map((s) => s.date));
 
-  const gridStart = startOfWeek(startOfMonth(monthAnchor));
-  const gridEnd = endOfWeek(endOfMonth(monthAnchor));
+  const gridStart = startOfWeek(startOfMonth(monthAnchor), { weekStartsOn: 1 });
+  const gridEnd = endOfWeek(endOfMonth(monthAnchor), { weekStartsOn: 1 });
   const weeks = chunk(eachDayOfInterval({ start: gridStart, end: gridEnd }), 7);
   const isCurrentMonth = isSameMonth(monthAnchor, new Date());
 
@@ -63,6 +64,13 @@ export function HabitLogCalendar({ entries, skips }: { entries: LoggedEntry[]; s
           <Text style={styles.navButtonText}>›</Text>
         </Pressable>
       </View>
+      <View style={styles.weekdayRow}>
+        {WEEKDAY_LABELS.map((label, i) => (
+          <Text key={i} style={styles.weekdayLabel}>
+            {label}
+          </Text>
+        ))}
+      </View>
       <View style={styles.grid}>
         {weeks.map((week, i) => (
           <View key={i} style={styles.week}>
@@ -80,7 +88,9 @@ export function HabitLogCalendar({ entries, skips }: { entries: LoggedEntry[]; s
                         : styles.cellEmpty,
                     !isSameMonth(date, monthAnchor) && styles.cellOutsideMonth,
                   ]}
-                />
+                >
+                  <Text style={styles.cellText}>{format(date, "d")}</Text>
+                </View>
               );
             })}
           </View>
@@ -117,6 +127,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
+  weekdayRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  weekdayLabel: {
+    color: theme.textMuted,
+    flex: 1,
+    fontSize: 11,
+    fontWeight: "600",
+    textAlign: "center",
+  },
   grid: {
     gap: 8,
   },
@@ -126,9 +148,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   cell: {
+    alignItems: "center",
     aspectRatio: 1,
     borderRadius: 8,
     flex: 1,
+    justifyContent: "center",
+  },
+  cellText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "600",
   },
   cellEmpty: {
     backgroundColor: theme.surfaceAlt,
