@@ -126,7 +126,7 @@ export interface Streak {
 export interface GoalSchedule {
   id: string;
   goalId: string;
-  /** A Sunday (week start) — this schedule applies from this date onward, until superseded. */
+  /** A Monday (week start) — this schedule applies from this date onward, until superseded. */
   effectiveDate: string;
   /** Date.getDay() values, 0=Sunday..6=Saturday. */
   scheduledDays: number[];

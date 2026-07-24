@@ -1,5 +1,5 @@
 import { FreezeWindow, Goal, GoalSchedule, LoggedEntry, SkipLog } from "../types";
-import { addDays, getWeekday, localDateOf } from "./dateUtils";
+import { addDays, daysSinceMonday, getWeekday, localDateOf } from "./dateUtils";
 
 /** `schedules` must be ascending by `effectiveDate` (as returned by `listGoalSchedules`). */
 export function scheduledDaysAsOf(schedules: GoalSchedule[], date: string): number[] {
@@ -22,9 +22,9 @@ export function weeklySkipLimitFor(scheduledDays: number[]): number {
   return 1;
 }
 
-/** The Sunday on or before `date` — the convention every weekly-quota calculation in this file anchors to. */
+/** The Monday on or before `date` — the convention every weekly-quota calculation in this file anchors to. */
 export function weekStartOf(date: string): string {
-  return addDays(date, -getWeekday(date));
+  return addDays(date, -daysSinceMonday(date));
 }
 
 export interface WeekTally {
@@ -116,7 +116,8 @@ export function walkWeeklySchedule(
     const logged = entryByDate.has(cursor);
     let weekFailed = false;
 
-    if (getWeekday(cursor) === 6) {
+    if (getWeekday(cursor) === 0) {
+      // Sunday — the last day of a Monday-start week.
       const tally = tallyWeek(schedules, goal, entries, skips, freezeWindows, addDays(cursor, -6));
       weekFailed = !tally.exempt && tally.credited < tally.required;
     }
@@ -154,7 +155,7 @@ export function currentWeekStatus(
     required: tally.required,
     credited: tally.credited,
     stillNeeded: Math.max(0, tally.required - tally.credited),
-    daysRemaining: 7 - getWeekday(today),
+    daysRemaining: 7 - daysSinceMonday(today),
     exempt: tally.exempt,
   };
 }

@@ -5,6 +5,8 @@ import { theme } from "../../theme";
 import { GoalNotificationTime } from "../../types";
 
 const DEFAULT_TIME: DayTime = { hour: 9, minute: 0 };
+// Must match DayOfWeekPicker's display order — these chips sit directly under its row.
+const MONDAY_FIRST_DAYS = [1, 2, 3, 4, 5, 6, 0];
 
 export interface DayTime {
   hour: number;
@@ -47,25 +49,23 @@ export function DayNotificationTimes({
   selectedDays,
   times,
   onChange,
-  disabled,
 }: {
   selectedDays: number[];
   times: Record<number, DayTime>;
   onChange: (day: number, time: DayTime) => void;
-  disabled?: boolean;
 }) {
   const [openDay, setOpenDay] = useState<number | null>(null);
 
   return (
     <View style={styles.row}>
-      {[0, 1, 2, 3, 4, 5, 6].map((day) => {
+      {MONDAY_FIRST_DAYS.map((day) => {
         const active = selectedDays.includes(day);
         const time = times[day] ?? DEFAULT_TIME;
         return (
           <Pressable
             key={day}
-            style={[styles.chip, !active && styles.chipMuted, disabled && styles.chipMuted]}
-            onPress={() => active && !disabled && setOpenDay(day)}
+            style={[styles.chip, !active && styles.chipMuted]}
+            onPress={() => active && setOpenDay(day)}
           >
             <Text style={[styles.chipText, !active && styles.chipTextMuted]}>{formatCompact(time)}</Text>
             {active && openDay === day && (

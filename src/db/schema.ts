@@ -154,7 +154,7 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE goals DROP COLUMN weekly_skip_limit;
 
   -- Per-goal weekly schedule, time-varying: edits only apply from a future
-  -- effective_date (a Sunday) onward, so replaying past streak history always
+  -- effective_date (a Monday) onward, so replaying past streak history always
   -- knows which schedule was active on a given past date.
   CREATE TABLE goal_schedules (
     id TEXT PRIMARY KEY NOT NULL,

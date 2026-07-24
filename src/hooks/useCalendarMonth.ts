@@ -23,8 +23,8 @@ export function useCalendarMonth(initialMonth: Date = new Date()) {
   const [loading, setLoading] = useState(true);
 
   const gridDates = useMemo(() => {
-    const gridStart = startOfWeek(startOfMonth(monthAnchor));
-    const gridEnd = endOfWeek(endOfMonth(monthAnchor));
+    const gridStart = startOfWeek(startOfMonth(monthAnchor), { weekStartsOn: 1 });
+    const gridEnd = endOfWeek(endOfMonth(monthAnchor), { weekStartsOn: 1 });
     return eachDayOfInterval({ start: gridStart, end: gridEnd });
   }, [monthAnchor]);
 

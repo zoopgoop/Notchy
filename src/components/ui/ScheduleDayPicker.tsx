@@ -12,18 +12,16 @@ export function ScheduleDayPicker({
   onChangeDays,
   times,
   onChangeTime,
-  disabled,
 }: {
   days: number[];
   onChangeDays: (days: number[]) => void;
   times: Record<number, DayTime>;
   onChangeTime: (day: number, time: DayTime) => void;
-  disabled?: boolean;
 }) {
   return (
     <>
-      <DayOfWeekPicker value={days} onChange={onChangeDays} disabled={disabled} />
-      <DayNotificationTimes selectedDays={days} times={times} onChange={onChangeTime} disabled={disabled} />
+      <DayOfWeekPicker value={days} onChange={onChangeDays} />
+      <DayNotificationTimes selectedDays={days} times={times} onChange={onChangeTime} />
       {days.length === 0 && <HintText danger>Pick at least one day.</HintText>}
     </>
   );

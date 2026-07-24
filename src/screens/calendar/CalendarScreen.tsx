@@ -6,7 +6,7 @@ import { useCalendarMonth, CalendarDay } from "../../hooks/useCalendarMonth";
 import { theme } from "../../theme";
 import { formatNumber, unitSuffix } from "../../utils/format";
 
-const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
 function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   statusDone: {
-    color: "#4CAF50",
+    color: theme.text,
     fontWeight: "600",
   },
   statusSkipped: {

@@ -1,17 +1,19 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { theme } from "../../theme";
 
-const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+// Displayed Monday-first (the app's week-start convention) while the underlying day
+// values stay Date.getDay()'s native 0=Sunday..6=Saturday encoding — this array just
+// controls display order, mapping each row position to its real day number.
+const MONDAY_FIRST_DAYS = [1, 2, 3, 4, 5, 6, 0];
+const DAY_LABELS: Record<number, string> = { 0: "S", 1: "M", 2: "T", 3: "W", 4: "T", 5: "F", 6: "S" };
 
-/** `Date.getDay()` convention: 0=Sunday..6=Saturday. */
+/** `Date.getDay()` convention: 0=Sunday..6=Saturday. Displayed Monday-first. */
 export function DayOfWeekPicker({
   value,
   onChange,
-  disabled,
 }: {
   value: number[];
   onChange: (days: number[]) => void;
-  disabled?: boolean;
 }) {
   function toggle(day: number) {
     onChange(value.includes(day) ? value.filter((d) => d !== day) : [...value, day].sort());
@@ -19,16 +21,15 @@ export function DayOfWeekPicker({
 
   return (
     <View style={styles.row}>
-      {DAY_LABELS.map((label, day) => {
+      {MONDAY_FIRST_DAYS.map((day) => {
         const selected = value.includes(day);
         return (
           <Pressable
             key={day}
             onPress={() => toggle(day)}
-            disabled={disabled}
-            style={[styles.chip, selected && styles.chipSelected, disabled && styles.chipDisabled]}
+            style={[styles.chip, selected && styles.chipSelected]}
           >
-            <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
+            <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{DAY_LABELS[day]}</Text>
           </Pressable>
         );
       })}
@@ -55,9 +56,6 @@ const styles = StyleSheet.create({
   chipSelected: {
     backgroundColor: theme.primary,
     borderColor: theme.primary,
-  },
-  chipDisabled: {
-    opacity: 0.5,
   },
   chipText: {
     color: theme.textMuted,

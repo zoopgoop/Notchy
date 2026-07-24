@@ -45,6 +45,16 @@ export function getWeekday(dateIso: string): number {
   return toUtcMidnight(dateIso).getUTCDay();
 }
 
+/**
+ * Days elapsed since this week's Monday (0 on Monday, 6 on Sunday) — every weekly-quota
+ * calculation in the app anchors its week to Monday, so this is the one place that
+ * conversion happens. Day-of-week values elsewhere (scheduled_days, getWeekday) stay in
+ * Date.getDay()'s native Sunday=0 encoding; only "where does the week start" changes.
+ */
+export function daysSinceMonday(dateIso: string): number {
+  return (getWeekday(dateIso) + 6) % 7;
+}
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
