@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { today } from "../engine/dateUtils";
 import { AchievementDef, evaluateAchievements } from "../services/achievements";
 import { DailyGoalView, loadDailyGoalViews } from "../services/dailyGoals";
@@ -17,17 +17,26 @@ export function useDailyGoals() {
   const [items, setItems] = useState<DailyGoalView[]>([]);
   const [loading, setLoading] = useState(true);
   const [newlyEarnedAchievements, setNewlyEarnedAchievements] = useState<AchievementDef[]>([]);
+  // Home fires refetch() from many places (skip, log, focus, crisis detection, ...) — two
+  // calls can overlap, and without this guard the one that happens to *resolve* last wins
+  // even if it was the older, now-stale request. That let a just-applied skip/log briefly
+  // (or not-so-briefly) get overwritten by a slower in-flight refetch that started before it,
+  // showing pre-action state again until something else happened to trigger another refetch.
+  const requestId = useRef(0);
 
   const refetch = useCallback(async () => {
+    const id = ++requestId.current;
     setLoading(true);
     try {
       const views = await loadDailyGoalViews(today());
+      if (id !== requestId.current) return;
       setItems(views);
       scheduleAllDailyNotifications(views);
       const { newlyEarned } = await evaluateAchievements();
+      if (id !== requestId.current) return;
       if (newlyEarned.length > 0) setNewlyEarnedAchievements(newlyEarned);
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
   }, []);
 
