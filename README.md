@@ -88,3 +88,7 @@ Each goal has a `curveType` (linear / incremental / exponential / percentage) an
 3. Three consecutive misses trigger a deload (target steps back ~20% toward start value)
 
 For open-ended habits (no target date), the target moves by a fixed step each hit — only the user (editing the step) or the adaptive multiplier can change it. Its live projection simulates a bounded number of future sessions forward (assuming hits) — the full distance to an actual target value if one exists, otherwise a short fixed preview — so the chart's projected line stays close to one real session per visual point instead of several averaged together.
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE) — free to use, study, modify, and share for any noncommercial purpose. Commercial use (including republishing a build of this app) requires the author's permission.
