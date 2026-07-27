@@ -28,9 +28,9 @@ import { useCategories } from "../../hooks/useCategories";
 import { useDailyGoals } from "../../hooks/useDailyGoals";
 import { recordRestartedStreak } from "../../services/achievements";
 import { pickPrimaryCelebration } from "../../services/celebrations";
-import { DailyGoalView } from "../../services/dailyGoals";
+import { autoApplyCrisisSkipsIfNeeded, DailyGoalView } from "../../services/dailyGoals";
 import { takePendingCelebration, takePendingEncouragement } from "../../services/pendingCelebration";
-import { logGoalEntry, skipGoalToday, spendSkipsToSaveStreak } from "../../services/dailyStatus";
+import { logGoalEntry, skipGoalToday } from "../../services/dailyStatus";
 import { getFreezesEnabled, getSkipsEnabled, getUserName } from "../../services/settings";
 import { forfeitCurrentStreak, recomputeStreak } from "../../services/streaks";
 import { loadWeeklySummary, WeeklySummary } from "../../services/weeklySummary";
@@ -201,10 +201,8 @@ export function HomeScreen({ navigation }: Props) {
     }
     if (autoSkipHandled.current !== crisisView.goal.id) {
       autoSkipHandled.current = crisisView.goal.id;
-      const habitName = crisisView.habit.name;
-      const skipsToSpend = crisisView.skipsNeededToSave;
-      spendSkipsToSaveStreak(crisisView.goal, today(), skipsToSpend).then(() => {
-        setAutoSkipNotice({ habitName, skipsUsed: skipsToSpend });
+      autoApplyCrisisSkipsIfNeeded(crisisView).then((saved) => {
+        if (saved) setAutoSkipNotice(saved);
         refetch();
       });
     }

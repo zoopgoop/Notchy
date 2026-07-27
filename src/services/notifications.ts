@@ -1,6 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import type { DailyGoalView } from "./dailyGoals";
+import type { AutoSavedStreak, DailyGoalView } from "./dailyGoals";
 import { listGoalNotificationTimes } from "../db/repositories";
 import { formatNumber, unitSuffix } from "../utils/format";
 let CountdownNotification: typeof import("countdown-notification").default | null = null;
@@ -264,6 +264,24 @@ export function dismissAllActiveNotifications(): void {
 /** Cancels the initial reminder for a specific goal — call this before deleting a goal or habit so the OS notification doesn't outlive the DB record. */
 export async function cancelGoalNotifications(goalId: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(initialNotificationId(goalId)).catch(() => {});
+}
+
+/**
+ * The background task can auto-apply crisis skips (see autoApplyCrisisSkipsIfNeeded) with
+ * nobody around to see SaveStreakPrompt — this is the headless equivalent, so a streak saved
+ * overnight is still surfaced instead of just quietly happening.
+ */
+export async function notifyAutoSavedStreaks(saved: AutoSavedStreak[]): Promise<void> {
+  if (saved.length === 0) return;
+  const title = saved.length === 1 ? "Streak saved automatically" : "Streaks saved automatically";
+  const body =
+    saved.length === 1
+      ? `"${saved[0].habitName}" — ${saved[0].skipsUsed} ${saved[0].skipsUsed === 1 ? "skip" : "skips"} used to cover missed days and keep your streak alive.`
+      : `${saved.map((s) => `"${s.habitName}"`).join(", ")} — skips used to cover missed days and keep those streaks alive.`;
+  await Notifications.scheduleNotificationAsync({
+    content: { title, body },
+    trigger: null,
+  });
 }
 
 /**

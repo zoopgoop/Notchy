@@ -13,7 +13,7 @@ import {
   listSkipsByGoal,
 } from "../db/repositories";
 import { Category, Habit, Goal, Streak } from "../types";
-import { DailyGoalStatus, getDailyStatus, getSkipsRemaining } from "./dailyStatus";
+import { DailyGoalStatus, getDailyStatus, getSkipsRemaining, spendSkipsToSaveStreak } from "./dailyStatus";
 import { computeMomentum, Momentum } from "../utils/momentum";
 
 /** A goal's full, pre-computed state for "today" — everything Home, notifications, and the background task need without re-deriving it themselves. */
@@ -169,4 +169,24 @@ export async function loadDailyGoalViews(date: string = today()): Promise<DailyG
   const goals = await listActiveGoals();
   const views = await Promise.all(goals.map((goal) => loadDailyGoalView(goal, date)));
   return views.filter((view): view is DailyGoalView => view !== null);
+}
+
+export interface AutoSavedStreak {
+  habitName: string;
+  skipsUsed: number;
+}
+
+/**
+ * Applies the skip(s) needed to cover an otherwise-unreachable week automatically — once
+ * skipsRemaining covers skipsNeededToSave there's no real choice to offer (letting a fully
+ * -recoverable streak go anyway would just be throwing it away), so this doesn't ask, it just
+ * does it and reports back what happened. Shared between HomeScreen (foreground, one goal at a
+ * time so its popup queues sanely) and the background task (every eligible goal each run) so
+ * the same rule applies whether or not the app happens to be open the day it matters — a goal
+ * doesn't stay silently at risk just because nobody opened the app that day.
+ */
+export async function autoApplyCrisisSkipsIfNeeded(view: DailyGoalView): Promise<AutoSavedStreak | null> {
+  if (!view.isCrisis || view.skipsRemaining < view.skipsNeededToSave) return null;
+  await spendSkipsToSaveStreak(view.goal, today(), view.skipsNeededToSave);
+  return { habitName: view.habit.name, skipsUsed: view.skipsNeededToSave };
 }
