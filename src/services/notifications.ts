@@ -12,6 +12,15 @@ try {
 
 const CHANNEL_ID = "daily-targets";
 
+// scheduleAllDailyNotifications can be, and is, called again before a prior call's own async
+// work (cancel-then-reschedule, several awaits deep) has finished — refetch() fires from many
+// places (log, skip, focus, ...) without waiting for the previous one's notification scheduling
+// to settle. Without this guard, an older call's stale "this goal is still pending" view could
+// finish scheduling *after* a newer call had already correctly cancelled it, silently
+// re-adding a notification for something you'd just logged. Cancelling redundantly is harmless,
+// so only the final schedule calls below check this — not every cancel along the way.
+let notificationGeneration = 0;
+
 /** Fixed, non-configurable run from 10:30pm to midnight — Duolingo-style streak countdown. */
 const COUNTDOWN_SLOTS = [
   { hour: 22, minute: 30, minutesLeft: 90 },
@@ -73,7 +82,7 @@ export async function requestExactAlarmPermission(): Promise<void> {
   );
 }
 
-async function scheduleCountdownNotifications(pending: DailyGoalView[]): Promise<void> {
+async function scheduleCountdownNotifications(pending: DailyGoalView[], generation: number): Promise<void> {
   // Cancel all previously scheduled slots.
   COUNTDOWN_SLOTS.forEach((_, i) => {
     CountdownNotification?.cancelCountdownNotification(i);
@@ -105,6 +114,11 @@ async function scheduleCountdownNotifications(pending: DailyGoalView[]): Promise
       : `${n} ${n === 1 ? "habit" : "habits"} still ${n === 1 ? "needs" : "need"} logging tonight!`;
 
   const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+
+  // A newer call has since started (and already cancelled these slots with fresher data) —
+  // committing this stale schedule now would silently resurrect a notification for something
+  // that's since been logged, skipped, or otherwise changed.
+  if (generation !== notificationGeneration) return;
 
   const cdn = CountdownNotification;
   if (cdn) {
@@ -202,7 +216,11 @@ function buildInitialNotification(view: DailyGoalView): { title: string; body: s
  * cancelling covers goals that were pending before but got logged, skipped, or unscheduled
  * since the last run.
  */
-async function scheduleInitialNotifications(items: DailyGoalView[], pending: DailyGoalView[]): Promise<void> {
+async function scheduleInitialNotifications(
+  items: DailyGoalView[],
+  pending: DailyGoalView[],
+  generation: number
+): Promise<void> {
   await Promise.all(
     items.map((item) => Notifications.cancelScheduledNotificationAsync(initialNotificationId(item.goal.id)).catch(() => {}))
   );
@@ -225,6 +243,9 @@ async function scheduleInitialNotifications(items: DailyGoalView[], pending: Dai
       if (fireDate.getTime() <= now.getTime()) return;
 
       const { title, body } = buildInitialNotification(view);
+      // listGoalNotificationTimes above is a real DB round-trip a newer call could easily
+      // finish first — re-check right before actually committing the schedule.
+      if (generation !== notificationGeneration) return;
       await Notifications.scheduleNotificationAsync({
         identifier: initialNotificationId(view.goal.id),
         content: { title, body },
@@ -251,6 +272,7 @@ export async function cancelGoalNotifications(goalId: string): Promise<void> {
  * after a goal gets logged or skipped.
  */
 export async function scheduleAllDailyNotifications(items: DailyGoalView[]): Promise<void> {
+  const generation = ++notificationGeneration;
   // Goals on ice get no notifications of any kind, indefinitely — the user explicitly
   // dismissed the lost-streak/quota-gone prompt, so nagging further would just be noise.
   // Logging or adjusting the goal takes it off ice and this resumes on the next run.
@@ -262,7 +284,7 @@ export async function scheduleAllDailyNotifications(items: DailyGoalView[]): Pro
     (item) => item.status.kind === "pending" && !item.dueToday && item.isOverdue && !item.isOnIce
   );
   await Promise.all([
-    scheduleCountdownNotifications(pendingDueToday),
-    scheduleInitialNotifications(items, [...pendingDueToday, ...pendingOverdue]),
+    scheduleCountdownNotifications(pendingDueToday, generation),
+    scheduleInitialNotifications(items, [...pendingDueToday, ...pendingOverdue], generation),
   ]);
 }
