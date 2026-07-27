@@ -118,6 +118,8 @@ export function HomeScreen({ navigation }: Props) {
   const [skipsEnabled, setSkipsEnabled] = useState(true);
   const [freezesEnabled, setFreezesEnabled] = useState(true);
   const [lossPrompt, setLossPrompt] = useState<{ view: DailyGoalView; hadStreak: boolean } | null>(null);
+  const [autoSkipNotice, setAutoSkipNotice] = useState<{ habitName: string; skipsUsed: number } | null>(null);
+  const autoSkipHandled = useRef<string | null>(null);
   const [activeFilter, setActiveFilter] = useState("all");
   const [showEncouragement, setShowEncouragement] = useState(false);
 
@@ -166,7 +168,6 @@ export function HomeScreen({ navigation }: Props) {
 
   const crisisView = useMemo(() => items.find((item) => item.isCrisis) ?? null, [items]);
   const canSpendSkips = !!crisisView && crisisView.skipsRemaining >= crisisView.skipsNeededToSave;
-  const showSaveStreak = !!crisisView && canSpendSkips;
 
   // No streak at stake, but the week's quota is already gone and not yet dismissed. Only the
   // first such goal is surfaced at a time (same pattern as missedDeadlineView below) — once it's
@@ -179,14 +180,33 @@ export function HomeScreen({ navigation }: Props) {
   // forfeit it immediately rather than waiting for the week to close out naturally. The
   // snapshot in lossPrompt keeps the prompt showing even once the forfeit flips isCrisis
   // back to false on refetch (0 streak means no streak is "at stake" anymore).
+  //
+  // If it CAN be saved with skips, there's no real choice to offer — letting it go anyway
+  // would just be throwing away a fully-recoverable streak for no reason — so the skips are
+  // applied automatically and SaveStreakPrompt just informs rather than asks.
   useEffect(() => {
-    if (crisisView && !canSpendSkips && lossPrompt?.view.goal.id !== crisisView.goal.id) {
-      setLossPrompt({ view: crisisView, hadStreak: true });
-      forfeitCurrentStreak(crisisView.goal.id).then(refetch);
+    if (!crisisView) {
+      autoSkipHandled.current = null;
+      if (quotaGoneView && lossPrompt?.view.goal.id !== quotaGoneView.goal.id) {
+        setLossPrompt({ view: quotaGoneView, hadStreak: false });
+      }
       return;
     }
-    if (!crisisView && quotaGoneView && lossPrompt?.view.goal.id !== quotaGoneView.goal.id) {
-      setLossPrompt({ view: quotaGoneView, hadStreak: false });
+    if (!canSpendSkips) {
+      if (lossPrompt?.view.goal.id !== crisisView.goal.id) {
+        setLossPrompt({ view: crisisView, hadStreak: true });
+        forfeitCurrentStreak(crisisView.goal.id).then(refetch);
+      }
+      return;
+    }
+    if (autoSkipHandled.current !== crisisView.goal.id) {
+      autoSkipHandled.current = crisisView.goal.id;
+      const habitName = crisisView.habit.name;
+      const skipsToSpend = crisisView.skipsNeededToSave;
+      spendSkipsToSaveStreak(crisisView.goal, today(), skipsToSpend).then(() => {
+        setAutoSkipNotice({ habitName, skipsUsed: skipsToSpend });
+        refetch();
+      });
     }
   }, [crisisView, canSpendSkips, quotaGoneView, lossPrompt, refetch]);
 
@@ -270,16 +290,6 @@ export function HomeScreen({ navigation }: Props) {
     refetch();
   }
 
-  async function handleSpendSkips(view: DailyGoalView) {
-    await spendSkipsToSaveStreak(view.goal, today(), view.skipsNeededToSave);
-    refetch();
-  }
-
-  async function handleLetItGo(view: DailyGoalView) {
-    setLossPrompt({ view, hadStreak: true });
-    await forfeitCurrentStreak(view.goal.id);
-    refetch();
-  }
 
   // Clearing lossPrompt before the restart's refetch lands would re-render with a still-stale
   // items list — the reopening effect below sees the same still-quota-gone view and pops the
@@ -439,12 +449,11 @@ export function HomeScreen({ navigation }: Props) {
         />
       )}
 
-      {crisisView && dialog === null && !missedDeadlineView && showSaveStreak && (
+      {autoSkipNotice && dialog === null && (
         <SaveStreakPrompt
-          habitName={crisisView.habit.name}
-          skipsNeeded={crisisView.skipsNeededToSave}
-          onSpendSkips={() => handleSpendSkips(crisisView)}
-          onLetItGo={() => handleLetItGo(crisisView)}
+          habitName={autoSkipNotice.habitName}
+          skipsUsed={autoSkipNotice.skipsUsed}
+          onDismiss={() => setAutoSkipNotice(null)}
         />
       )}
 
@@ -622,6 +631,7 @@ function GoalCard({
   const [entries, setEntries] = useState<LoggedEntry[] | null>(null);
   const [skips, setSkips] = useState<SkipLog[]>([]);
   const [projectedTargets, setProjectedTargets] = useState<number[]>([]);
+  const [confirmRemoveLog, setConfirmRemoveLog] = useState(false);
 
   useEffect(() => {
     if (!expanded) return;
@@ -751,9 +761,9 @@ function GoalCard({
           {habit.type === "boolean" ? (
             <Pressable
               style={({ pressed }) => [styles.logAgainButton, pressed && styles.logAgainPressed]}
-              onPress={onRemoveLog}
+              onPress={() => setConfirmRemoveLog(true)}
             >
-              <Text style={styles.logAgainText}>Reset Log</Text>
+              <Text style={styles.logAgainText}>Remove Log</Text>
             </Pressable>
           ) : (
             <View style={styles.logAgainRow}>
@@ -826,6 +836,19 @@ function GoalCard({
           )}
         </>
       )}
+      <ConfirmDialog
+        visible={confirmRemoveLog}
+        title="Remove log?"
+        message={`This clears today's check-in for "${habit.name}" and recomputes your streak as if it were never logged.`}
+        confirmLabel="Remove"
+        cancelLabel="Cancel"
+        destructive
+        onConfirm={() => {
+          setConfirmRemoveLog(false);
+          onRemoveLog();
+        }}
+        onCancel={() => setConfirmRemoveLog(false)}
+      />
     </View>
   );
 }
