@@ -80,7 +80,8 @@ export async function skipGoalToday(goal: Goal, date: string): Promise<SkipResul
  * Backfills `count` of this week's already-missed days as skips, then recomputes
  * the streak — used to climb back out of a weekly-quota crisis before it's too
  * late to matter. Only days strictly before `date` are eligible, since today
- * isn't missed yet.
+ * isn't missed yet. Walks backwards from the most recent unaccounted day toward
+ * the start of the week, so the days closest to today get covered first.
  */
 export async function spendSkipsToSaveStreak(goal: Goal, date: string, count: number): Promise<void> {
   const [entries, skips] = await Promise.all([listEntriesByGoal(goal.id), listSkipsByGoal(goal.id)]);
@@ -88,12 +89,13 @@ export async function spendSkipsToSaveStreak(goal: Goal, date: string, count: nu
   const skipDates = new Set(skips.map((s) => s.date));
 
   const candidates: string[] = [];
-  let cursor = weekStartOf(date);
-  while (cursor < date && candidates.length < count) {
+  const weekStart = weekStartOf(date);
+  let cursor = addDays(date, -1);
+  while (cursor >= weekStart && candidates.length < count) {
     if (!loggedDates.has(cursor) && !skipDates.has(cursor)) {
       candidates.push(cursor);
     }
-    cursor = addDays(cursor, 1);
+    cursor = addDays(cursor, -1);
   }
 
   for (const day of candidates) {
