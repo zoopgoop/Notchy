@@ -2,31 +2,36 @@ import { Modal, StyleSheet, Text, View } from "react-native";
 import { Button } from "../../components/ui/Button";
 import { theme } from "../../theme";
 
+/**
+ * Shown *after* the skip(s) needed to cover an otherwise-unreachable week have already been
+ * applied automatically — this crisis only ever fires when skipsRemaining >= skipsNeededToSave
+ * (see HomeScreen's crisisView/canSpendSkips), so there's no real choice to offer: the streak
+ * is fully recoverable, and letting it go anyway would just be throwing it away for no reason.
+ * If there aren't enough skips to cover it, this never shows — that goal goes straight to
+ * StreakLostPrompt's forfeit-and-restart flow instead.
+ */
 export function SaveStreakPrompt({
   habitName,
-  skipsNeeded,
-  onSpendSkips,
-  onLetItGo,
+  skipsUsed,
+  onDismiss,
 }: {
   habitName: string;
-  skipsNeeded: number;
-  onSpendSkips: () => void;
-  onLetItGo: () => void;
+  skipsUsed: number;
+  onDismiss: () => void;
 }) {
-  const skipWord = skipsNeeded === 1 ? "skip" : "skips";
+  const skipWord = skipsUsed === 1 ? "skip" : "skips";
+  const dayWord = skipsUsed === 1 ? "day" : "days";
 
   return (
-    <Modal transparent animationType="fade">
+    <Modal transparent animationType="fade" onRequestClose={onDismiss}>
       <View style={styles.backdrop}>
-        <Text style={styles.emoji}>⚠️</Text>
-        <Text style={styles.title}>Your streak is in danger</Text>
+        <Text style={styles.emoji}>🛟</Text>
+        <Text style={styles.title}>Streak saved automatically</Text>
         <Text style={styles.subtitle}>
-          "{habitName}" won't hit this week's check-in quota even if you log every remaining day. Spend{" "}
-          {skipsNeeded} {skipWord} to cover what you've missed and keep your streak alive?
+          You've missed the last {skipsUsed} scheduled {dayWord} on "{habitName}" — {skipsUsed} {skipWord}{" "}
+          {skipsUsed === 1 ? "has" : "have"} been used to cover it and keep your streak alive.
         </Text>
-        <Button title={`Spend ${skipsNeeded} ${skipWord}`} onPress={onSpendSkips} />
-        <View style={styles.spacer} />
-        <Button title="Let it go" variant="secondary" onPress={onLetItGo} />
+        <Button title="Got it" onPress={onDismiss} />
       </View>
     </Modal>
   );
@@ -56,8 +61,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 24,
     textAlign: "center",
-  },
-  spacer: {
-    height: 10,
   },
 });
