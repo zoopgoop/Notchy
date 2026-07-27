@@ -554,6 +554,14 @@ export function HomeScreen({ navigation }: Props) {
   );
 }
 
+// isUrgentToday can be true from the moment the day rolls over — pulsing an urgency animation
+// at 12:01am, before the user's even had a normal chance at the day, reads as premature nagging.
+// Giving it until midday means it only starts drawing the eye once "today" has actually had a
+// chance to happen.
+function isPastMidday(): boolean {
+  return new Date().getHours() >= 12;
+}
+
 /** A slow, continuous pulse on the streak badge — the one piece of UI worth drawing the eye to. */
 function PulsingStreak({ value }: { value: number }) {
   const scale = useRef(new Animated.Value(1)).current;
@@ -669,7 +677,7 @@ function GoalCard({
           <View style={[styles.dot, { backgroundColor: statusColor }]} />
           <Text style={styles.habitName}>{habit.name}</Text>
           {streak.current > 0 &&
-            (isUrgentToday || isCrisis ? (
+            ((isUrgentToday || isCrisis) && isPastMidday() ? (
               <PulsingStreak value={streak.current} />
             ) : (
               <Text style={styles.streak}>🔥 {streak.current}</Text>
