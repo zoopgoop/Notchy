@@ -27,6 +27,18 @@ export function weekStartOf(date: string): string {
   return addDays(date, -daysSinceMonday(date));
 }
 
+/**
+ * Same resolution as scheduledDaysAsOf, but pinned to the start of the week containing
+ * `date` instead of `date` itself — so a schedule edit made mid-week doesn't affect
+ * anything for the rest of that week, matching tallyWeek's own quota calculation. Used
+ * for reminders specifically so a same-day edit can't be used to dodge either one; a goal's
+ * date-driven curve pacing (countScheduledDaysBetween) intentionally does NOT go through
+ * this — that's about progression math, not the weekly quota/reminder cycle.
+ */
+function scheduledDaysForWeekOf(schedules: GoalSchedule[], date: string): number[] {
+  return scheduledDaysAsOf(schedules, weekStartOf(date));
+}
+
 export interface WeekTally {
   weekStart: string;
   /** How many check-ins are required this week — the count of scheduled days, not which specific ones. */
@@ -165,7 +177,7 @@ export function nextScheduledReminder(schedules: GoalSchedule[], fromDate: strin
   const horizon = addDays(fromDate, 13);
   let cursor = fromDate;
   while (cursor <= horizon) {
-    if (scheduledDaysAsOf(schedules, cursor).includes(getWeekday(cursor))) return cursor;
+    if (scheduledDaysForWeekOf(schedules, cursor).includes(getWeekday(cursor))) return cursor;
     cursor = addDays(cursor, 1);
   }
   return null;

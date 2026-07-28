@@ -416,7 +416,7 @@ export function HabitDetailScreen({ route, navigation }: Props) {
               <HintText>
                 {lockedDayCount !== null
                   ? `Which days you pick and their reminder times are yours to change — it's only the number of days (${lockedDayCount} this week) that's locked in, since that sets your weekly quota.`
-                  : "These are your check-in days — when you'll be reminded. You can log on any day and it still counts toward your weekly quota. To prevent quota dodging, day changes only take effect from next week onward — reminders update right away, though."}
+                  : "These are your check-in days — when you'll be reminded. You can log on any day and it still counts toward your weekly quota. To prevent quota dodging, day changes (including which days you're reminded on) only take effect from next week onward."}
               </HintText>
               <View style={styles.modalPickerSpacer}>
                 <DayOfWeekPicker value={editedDays} onChange={setEditedDays} />
