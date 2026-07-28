@@ -31,6 +31,16 @@ export interface Habit {
   createdAt: string;
   /** Free-text notes — purely descriptive, editable anytime regardless of goal lock state. */
   description?: string;
+  /**
+   * Master on/off switch for this habit's notifications (morning reminder + evening
+   * countdown). Lives here, not on Goal — the habit is the actual task being notified
+   * about; a goal is only the optional end target a habit may or may not have, and
+   * notifications need to work for goalless habits and survive a goal being replaced
+   * (achieved/restarted) too. Defaults true.
+   */
+  notificationsEnabled: boolean;
+  /** When false, overdue/catch-up notifications are suppressed on days outside the scheduled day list. */
+  notifyOffSchedule: boolean;
 }
 
 /**
@@ -54,8 +64,6 @@ export interface Goal {
   achievedAt?: string;
   createdAt: string;
   active: boolean;
-  /** When false, overdue/catch-up notifications are suppressed on days outside the scheduled day list. */
-  notifyOffSchedule: boolean;
   /** Once true, every notification for this goal is silenced indefinitely — set only by dismissing the lost-streak/quota-gone prompt, cleared by logging or adjusting the goal. */
   onIce: boolean;
   /** Set by "Start Again"/"Adjust Habit" on the lost-streak/quota-gone prompt — trims this week's required check-ins down to this date forward, same as a fresh goal's first week. */

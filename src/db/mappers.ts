@@ -36,6 +36,8 @@ export interface HabitRow {
   unit_label: string | null;
   created_at: string;
   description: string | null;
+  notifications_enabled: number;
+  notify_off_schedule: number;
 }
 
 export function rowToHabit(row: HabitRow): Habit {
@@ -48,6 +50,8 @@ export function rowToHabit(row: HabitRow): Habit {
     unitLabel: row.unit_label ?? undefined,
     createdAt: row.created_at,
     description: row.description ?? undefined,
+    notificationsEnabled: row.notifications_enabled !== 0,
+    notifyOffSchedule: row.notify_off_schedule !== 0,
   };
 }
 
@@ -64,7 +68,6 @@ export interface GoalRow {
   achieved_at: string | null;
   created_at: string;
   active: number;
-  notify_off_schedule: number;
   on_ice: number;
   restarted_at: string | null;
 }
@@ -83,7 +86,6 @@ export function rowToGoal(row: GoalRow): Goal {
     achievedAt: row.achieved_at ?? undefined,
     createdAt: row.created_at,
     active: !!row.active,
-    notifyOffSchedule: row.notify_off_schedule !== 0,
     onIce: !!row.on_ice,
     restartedAt: row.restarted_at ?? undefined,
   };

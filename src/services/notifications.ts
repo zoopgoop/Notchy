@@ -234,7 +234,7 @@ async function scheduleInitialNotifications(
       // For overdue items on non-scheduled days, use the most recently missed scheduled day's time.
       const todayTime = times.find((t) => t.dayOfWeek === dayOfWeek);
       // If today isn't a scheduled day and the user has opted out of off-schedule notifications, skip.
-      if (!todayTime && !view.goal.notifyOffSchedule) return;
+      if (!todayTime && !view.habit.notifyOffSchedule) return;
       const overdueTime = view.overdueNotificationDayOfWeek !== null
         ? times.find((t) => t.dayOfWeek === view.overdueNotificationDayOfWeek)
         : undefined;
@@ -301,8 +301,13 @@ export async function scheduleAllDailyNotifications(items: DailyGoalView[]): Pro
   const pendingOverdue = items.filter(
     (item) => item.status.kind === "pending" && !item.dueToday && item.isOverdue && !item.isOnIce
   );
+  // The countdown is one shared nudge covering everything still pending tonight, not really
+  // "from" any one habit — a habit with its own notifications turned off still counts toward
+  // it. The per-habit morning reminder is the opposite: that IS specifically about this habit,
+  // so habit.notificationsEnabled is what it actually respects.
+  const remindersEnabled = [...pendingDueToday, ...pendingOverdue].filter((item) => item.habit.notificationsEnabled);
   await Promise.all([
     scheduleCountdownNotifications(pendingDueToday, generation),
-    scheduleInitialNotifications(items, [...pendingDueToday, ...pendingOverdue], generation),
+    scheduleInitialNotifications(items, remindersEnabled, generation),
   ]);
 }

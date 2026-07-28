@@ -7,10 +7,15 @@ import { HabitLogCalendar } from "../../components/charts/HabitLogCalendar";
 import { HabitProgressChart } from "../../components/charts/HabitProgressChart";
 import { CategoryPicker } from "../../components/ui/CategoryPicker";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
-import { DayTime, notificationTimesFromMap, notificationTimesToMap } from "../../components/ui/DayNotificationTimes";
+import {
+  DayNotificationTimes,
+  DayTime,
+  notificationTimesFromMap,
+  notificationTimesToMap,
+} from "../../components/ui/DayNotificationTimes";
+import { DayOfWeekPicker } from "../../components/ui/DayOfWeekPicker";
 import { FieldGroup, FieldLabel, HintText, TextField } from "../../components/ui/FormField";
 import { PageTitle, Screen } from "../../components/ui/Screen";
-import { ScheduleDayPicker } from "../../components/ui/ScheduleDayPicker";
 import {
   createGoalSchedule,
   deleteFreezeWindow,
@@ -27,9 +32,10 @@ import {
   setGoalActive,
   setGoalAdaptive,
   setGoalNotificationTimes,
-  setGoalNotifyOffSchedule,
   setHabitCategory,
   setHabitDescription,
+  setHabitNotificationsEnabled,
+  setHabitNotifyOffSchedule,
 } from "../../db/repositories";
 import { cancelGoalNotifications } from "../../services/notifications";
 import { today } from "../../engine/dateUtils";
@@ -67,6 +73,7 @@ export function HabitDetailScreen({ route, navigation }: Props) {
   const [editedDays, setEditedDays] = useState<number[]>([]);
   const [editedTimes, setEditedTimes] = useState<Record<number, DayTime>>({});
   const [editedNotifyOffSchedule, setEditedNotifyOffSchedule] = useState(true);
+  const [editedNotificationsEnabled, setEditedNotificationsEnabled] = useState(true);
   // Set only when the goal has a target — the day *count* is that goal's weekly quota (see
   // tallyWeek), so it's locked until achieved, even though which days/times remain editable.
   const [lockedDayCount, setLockedDayCount] = useState<number | null>(null);
@@ -168,7 +175,8 @@ export function HabitDetailScreen({ route, navigation }: Props) {
     setLockedDayCount(habit.type !== "boolean" && goal.targetValue !== undefined ? currentDays.length : null);
     const savedTimes = await listGoalNotificationTimes(goal.id);
     setEditedTimes(notificationTimesToMap(savedTimes));
-    setEditedNotifyOffSchedule(goal.notifyOffSchedule);
+    setEditedNotifyOffSchedule(habit.notifyOffSchedule);
+    setEditedNotificationsEnabled(habit.notificationsEnabled);
     setScheduleModalVisible(true);
   }
 
@@ -182,7 +190,8 @@ export function HabitDetailScreen({ route, navigation }: Props) {
     await Promise.all([
       createGoalSchedule(goal.id, today(), editedDays),
       setGoalNotificationTimes(goal.id, notificationTimesFromMap(goal.id, editedDays, editedTimes)),
-      setGoalNotifyOffSchedule(goal.id, editedNotifyOffSchedule),
+      setHabitNotifyOffSchedule(habitId, editedNotifyOffSchedule),
+      setHabitNotificationsEnabled(habitId, editedNotificationsEnabled),
     ]);
     setScheduleModalVisible(false);
     refetch();
@@ -410,29 +419,45 @@ export function HabitDetailScreen({ route, navigation }: Props) {
                   : "These are your check-in days — when you'll be reminded. You can log on any day and it still counts toward your weekly quota. To prevent quota dodging, day changes only take effect from next week onward — reminders update right away, though."}
               </HintText>
               <View style={styles.modalPickerSpacer}>
-                <ScheduleDayPicker
-                  days={editedDays}
-                  onChangeDays={setEditedDays}
-                  times={editedTimes}
-                  onChangeTime={handleChangeNotificationTime}
-                />
+                <DayOfWeekPicker value={editedDays} onChange={setEditedDays} />
               </View>
+              {editedDays.length === 0 && <HintText danger>Pick at least one day.</HintText>}
               {lockedDayCount !== null && editedDays.length !== lockedDayCount && (
                 <HintText danger>
                   Pick exactly {lockedDayCount} day{lockedDayCount === 1 ? "" : "s"} to save.
                 </HintText>
               )}
-              <HintText>Reminder times apply right away. Tap a time above to change it.</HintText>
               <View style={styles.offScheduleRow}>
                 <View style={styles.offScheduleText}>
-                  <Text style={styles.offScheduleLabel}>Notify on non-scheduled days</Text>
-                  <Text style={styles.offScheduleHint}>Send overdue reminders even on days not in your schedule</Text>
+                  <Text style={styles.offScheduleLabel}>Notifications</Text>
+                  <Text style={styles.offScheduleHint}>
+                    {editedNotificationsEnabled ? "Notifications are on for this habit" : "Notifications are off for this habit"}
+                  </Text>
                 </View>
-                <Switch
-                  value={editedNotifyOffSchedule}
-                  onValueChange={setEditedNotifyOffSchedule}
-                />
+                <Switch value={editedNotificationsEnabled} onValueChange={setEditedNotificationsEnabled} />
               </View>
+              {editedNotificationsEnabled && (
+                <>
+                  <View style={styles.modalPickerSpacer}>
+                    <DayNotificationTimes
+                      selectedDays={editedDays}
+                      times={editedTimes}
+                      onChange={handleChangeNotificationTime}
+                    />
+                  </View>
+                  <HintText>Reminder times apply right away. Tap a time above to change it.</HintText>
+                  <View style={styles.offScheduleRow}>
+                    <View style={styles.offScheduleText}>
+                      <Text style={styles.offScheduleLabel}>Notify on non-scheduled days</Text>
+                      <Text style={styles.offScheduleHint}>Send overdue reminders even on days not in your schedule</Text>
+                    </View>
+                    <Switch
+                      value={editedNotifyOffSchedule}
+                      onValueChange={setEditedNotifyOffSchedule}
+                    />
+                  </View>
+                </>
+              )}
               <View style={styles.modalButtonSpacer} />
               <Button
                 title="Save"

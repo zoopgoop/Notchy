@@ -245,7 +245,6 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
       step: parsedStep,
       createdAt: today(),
       active: true,
-      notifyOffSchedule: true,
       onIce: false,
     };
     const previewHabit: Habit = {
@@ -255,6 +254,8 @@ export function HabitGoalFormScreen({ route, navigation }: Props) {
       direction,
       unitLabel,
       createdAt: today(),
+      notificationsEnabled: true,
+      notifyOffSchedule: true,
     };
     return generateNextTarget(previewGoal, previewHabit, previewSchedule, [], today()).target;
   }, [

@@ -3,13 +3,10 @@ import { getDb } from "../client";
 import { generateId } from "../id";
 import { GoalRow, rowToGoal } from "../mappers";
 
-export async function createGoal(
-  input: Omit<Goal, "id" | "createdAt" | "notifyOffSchedule" | "onIce"> & { notifyOffSchedule?: boolean }
-): Promise<Goal> {
+export async function createGoal(input: Omit<Goal, "id" | "createdAt" | "onIce">): Promise<Goal> {
   const db = await getDb();
   const goal: Goal = {
     ...input,
-    notifyOffSchedule: input.notifyOffSchedule ?? true,
     onIce: false,
     id: generateId(),
     createdAt: new Date().toISOString(),
@@ -17,8 +14,8 @@ export async function createGoal(
   await db.runAsync(
     `INSERT INTO goals (
       id, habit_id, start_value, target_value, target_date, curve_type, adaptive,
-      progression_mode, step, achieved_at, created_at, active, notify_off_schedule
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      progression_mode, step, achieved_at, created_at, active
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       goal.id,
       goal.habitId,
@@ -32,7 +29,6 @@ export async function createGoal(
       goal.achievedAt ?? null,
       goal.createdAt,
       goal.active ? 1 : 0,
-      goal.notifyOffSchedule ? 1 : 0,
     ]
   );
   return goal;
@@ -103,11 +99,6 @@ export async function clearGoalTarget(id: string): Promise<void> {
 export async function setGoalActive(id: string, active: boolean): Promise<void> {
   const db = await getDb();
   await db.runAsync("UPDATE goals SET active = ? WHERE id = ?", [active ? 1 : 0, id]);
-}
-
-export async function setGoalNotifyOffSchedule(id: string, enabled: boolean): Promise<void> {
-  const db = await getDb();
-  await db.runAsync("UPDATE goals SET notify_off_schedule = ? WHERE id = ?", [enabled ? 1 : 0, id]);
 }
 
 export async function setGoalOnIce(id: string, onIce: boolean): Promise<void> {

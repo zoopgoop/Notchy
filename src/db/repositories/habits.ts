@@ -3,11 +3,22 @@ import { getDb } from "../client";
 import { generateId } from "../id";
 import { HabitRow, rowToHabit } from "../mappers";
 
-export async function createHabit(input: Omit<Habit, "id" | "createdAt">): Promise<Habit> {
+export async function createHabit(
+  input: Omit<Habit, "id" | "createdAt" | "notificationsEnabled" | "notifyOffSchedule"> & {
+    notificationsEnabled?: boolean;
+    notifyOffSchedule?: boolean;
+  }
+): Promise<Habit> {
   const db = await getDb();
-  const habit: Habit = { id: generateId(), createdAt: new Date().toISOString(), ...input };
+  const habit: Habit = {
+    id: generateId(),
+    createdAt: new Date().toISOString(),
+    ...input,
+    notificationsEnabled: input.notificationsEnabled ?? true,
+    notifyOffSchedule: input.notifyOffSchedule ?? true,
+  };
   await db.runAsync(
-    "INSERT INTO habits (id, category_id, name, type, direction, unit_label, created_at, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO habits (id, category_id, name, type, direction, unit_label, created_at, description, notifications_enabled, notify_off_schedule) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       habit.id,
       habit.categoryId ?? null,
@@ -17,6 +28,8 @@ export async function createHabit(input: Omit<Habit, "id" | "createdAt">): Promi
       habit.unitLabel ?? null,
       habit.createdAt,
       habit.description ?? null,
+      habit.notificationsEnabled ? 1 : 0,
+      habit.notifyOffSchedule ? 1 : 0,
     ]
   );
   return habit;
@@ -81,6 +94,18 @@ export async function setHabitDescription(id: string, description: string | unde
 export async function setHabitCategory(id: string, categoryId: string | undefined): Promise<void> {
   const db = await getDb();
   await db.runAsync("UPDATE habits SET category_id = ? WHERE id = ?", [categoryId ?? null, id]);
+}
+
+/** Master on/off switch for this habit's notifications — see the notifications_enabled column comment in schema.ts. */
+export async function setHabitNotificationsEnabled(id: string, enabled: boolean): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE habits SET notifications_enabled = ? WHERE id = ?", [enabled ? 1 : 0, id]);
+}
+
+/** When false, overdue/catch-up notifications are suppressed on days outside the scheduled day list. */
+export async function setHabitNotifyOffSchedule(id: string, enabled: boolean): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("UPDATE habits SET notify_off_schedule = ? WHERE id = ?", [enabled ? 1 : 0, id]);
 }
 
 export async function deleteHabit(id: string): Promise<void> {

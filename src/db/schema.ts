@@ -264,6 +264,25 @@ export const MIGRATIONS: string[] = [
   -- regardless of whether the goal itself is locked in.
   ALTER TABLE habits ADD COLUMN description TEXT;
   `,
+  `
+  -- Master on/off switch for this habit's notifications (morning reminder + evening
+  -- countdown). Lives on habits, not goals — the habit is the actual task being
+  -- notified about, a goal is only the optional end target layered on top of it, and
+  -- notifications need to keep working for goalless habits and across a goal being
+  -- replaced (achieved/restarted) too. Separate from notify_off_schedule (see next
+  -- migration), which only controls whether an already-enabled reminder also fires
+  -- on non-scheduled days. Defaults on.
+  ALTER TABLE habits ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 1;
+  `,
+  `
+  -- notify_off_schedule moves from goals to habits, for the same reason as
+  -- notifications_enabled above: it's a notification preference about the habit,
+  -- not progression state about a goal, so it shouldn't reset every time a goal gets
+  -- replaced (achieved/restarted). Resets to the default (on) in this move — a
+  -- one-time cost, not worth a data-preserving migration for a single boolean.
+  ALTER TABLE goals DROP COLUMN notify_off_schedule;
+  ALTER TABLE habits ADD COLUMN notify_off_schedule INTEGER NOT NULL DEFAULT 1;
+  `,
 ];
 
 export const BUILT_IN_TAGS = ["Tired", "Sore"];

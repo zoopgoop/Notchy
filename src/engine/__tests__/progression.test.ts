@@ -16,7 +16,6 @@ function makeGoal(overrides: Partial<Goal> = {}): Goal {
     step: 2,
     createdAt: "2026-01-01",
     active: true,
-    notifyOffSchedule: true,
     onIce: false,
     ...overrides,
   };
@@ -31,6 +30,8 @@ function makeHabit(overrides: Partial<Habit> = {}): Habit {
     direction: "increasing",
     unitLabel: "cm",
     createdAt: "2026-01-01",
+    notificationsEnabled: true,
+    notifyOffSchedule: true,
     ...overrides,
   };
 }
