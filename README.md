@@ -14,6 +14,7 @@ A habit-tracking Android app built with Expo / React Native. Notchy was an app b
 - **Calendar views** — month-grid calendar (category-coloured dots, Monday-first) with tap-to-expand detail; per-habit boolean calendar showing logged (green) and skipped (grey) days, with weekday headers and day numbers
 - **Achievements** — a Trophy Case of badges (streaks, variety, consistency, and more) that unlock automatically as you use the app
 - **Celebrations** — milestone and streak achievements trigger animated overlays with a chime sound
+- **Backup / restore** — Export Data shares a raw copy of the on-device database; Import Data restores from one, for moving to a new device or just keeping a safety net
 - **Onboarding** — animated intro screen and a short walkthrough on first launch
 
 ## Tech stack
