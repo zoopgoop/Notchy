@@ -28,6 +28,7 @@ export function PacingAdjustmentPrompt({
   currentTargetDate,
   currentTargetValue,
   unit,
+  allowsDecimal,
   onAdjustDate,
   onAdjustTarget,
   onDismiss,
@@ -36,6 +37,7 @@ export function PacingAdjustmentPrompt({
   currentTargetDate: string;
   currentTargetValue: number;
   unit: string;
+  allowsDecimal: boolean;
   onAdjustDate: (newDate: string) => void;
   onAdjustTarget: (newTarget: number) => void;
   onDismiss: () => void;
@@ -63,12 +65,18 @@ export function PacingAdjustmentPrompt({
 
         <FieldGroup>
           <FieldLabel>{copy.targetLabel}</FieldLabel>
-          <TextField keyboardType="number-pad" value={newTarget} onChangeText={setNewTarget} />
+          <TextField
+            keyboardType={allowsDecimal ? "decimal-pad" : "number-pad"}
+            value={newTarget}
+            onChangeText={(text) =>
+              setNewTarget(allowsDecimal ? text.replace(/[^0-9.]/g, "") : text.replace(/[^0-9]/g, ""))
+            }
+          />
           <Button
             title="Use this target"
             variant="secondary"
             onPress={() => {
-              const parsed = parseInt(newTarget, 10);
+              const parsed = allowsDecimal ? parseFloat(newTarget) : parseInt(newTarget, 10);
               if (!isNaN(parsed)) onAdjustTarget(parsed);
             }}
           />

@@ -55,7 +55,7 @@ export function GoalFormScreen({ route, navigation }: Props) {
   const [curveType, setCurveType] = useState<CurveType>("linear");
   const [adaptive, setAdaptive] = useState(false);
   const [progressionMode, setProgressionMode] = useState<ProgressionMode>("static");
-  const [step, setStep] = useState("2");
+  const [step, setStep] = useState("");
   const [scheduledDays, setScheduledDays] = useState<number[]>(ALL_DAYS);
   const [notificationTimes, setNotificationTimes] = useState<Record<number, DayTime>>({});
   const [saving, setSaving] = useState(false);
@@ -69,12 +69,20 @@ export function GoalFormScreen({ route, navigation }: Props) {
   const usesDate = pacingMode === "date";
   const hasTarget = usesDate || !openEnded;
 
-  // Numeric habits (reps, sessions, etc.) are whole-number-only — see progression.ts.
-  const parsedStart = parseInt(startValue, 10);
-  const parsedTarget = parseInt(targetValue, 10);
+  const valueKind = habit?.valueKind;
+
+  // Numeric habits are whole-number-only by default (reps, sessions — see progression.ts),
+  // unless this habit opted into decimals (weight, distance, ...).
+  const parsedStart = valueKind === "decimal" ? parseFloat(startValue) : parseInt(startValue, 10);
+  const parsedTarget = valueKind === "decimal" ? parseFloat(targetValue) : parseInt(targetValue, 10);
   // Relative rate is entered as a percentage (e.g. "1.5") and converted to a fraction here,
   // the one place every downstream curve calculation reads from.
-  const parsedStep = progressionMode === "relative" ? parseFloat(step) / 100 : parseInt(step, 10);
+  const parsedStep =
+    progressionMode === "relative"
+      ? parseFloat(step) / 100
+      : valueKind === "decimal"
+        ? parseFloat(step)
+        : parseInt(step, 10);
 
   const direction: Direction =
     hasTarget && !isNaN(parsedStart) && !isNaN(parsedTarget)
@@ -88,7 +96,7 @@ export function GoalFormScreen({ route, navigation }: Props) {
       (!isNaN(parsedStart) &&
         (!hasTarget || (!isNaN(parsedTarget) && parsedTarget !== parsedStart)) &&
         !isNaN(parsedStep) &&
-        (progressionMode === "relative" || parsedStep >= 1)));
+        (progressionMode === "relative" || (valueKind === "decimal" ? parsedStep > 0 : parsedStep >= 1))));
 
   function handleChangeNotificationTime(day: number, time: DayTime) {
     setNotificationTimes((prev) => ({ ...prev, [day]: time }));
@@ -141,9 +149,11 @@ export function GoalFormScreen({ route, navigation }: Props) {
             <FieldLabel>Starting Point</FieldLabel>
             <TextField
               placeholder="e.g. 60"
-              keyboardType="number-pad"
+              keyboardType={valueKind === "decimal" ? "decimal-pad" : "number-pad"}
               value={startValue}
-              onChangeText={setStartValue}
+              onChangeText={(text) =>
+                setStartValue(valueKind === "decimal" ? text.replace(/[^0-9.]/g, "") : text.replace(/[^0-9]/g, ""))
+              }
             />
             <HintText>Where you're starting from, how fast you'll move, and what you're aiming for.</HintText>
           </FieldGroup>
@@ -171,9 +181,11 @@ export function GoalFormScreen({ route, navigation }: Props) {
               <FieldLabel>End Goal</FieldLabel>
               <TextField
                 placeholder="e.g. 90"
-                keyboardType="number-pad"
+                keyboardType={valueKind === "decimal" ? "decimal-pad" : "number-pad"}
                 value={targetValue}
-                onChangeText={setTargetValue}
+                onChangeText={(text) =>
+                  setTargetValue(valueKind === "decimal" ? text.replace(/[^0-9.]/g, "") : text.replace(/[^0-9]/g, ""))
+                }
               />
             </FieldGroup>
           ) : (
@@ -209,13 +221,21 @@ export function GoalFormScreen({ route, navigation }: Props) {
               <FieldGroup>
                 <FieldLabel>{progressionMode === "relative" ? "Rate (%)" : "Step Amount"}</FieldLabel>
                 <TextField
-                  placeholder={progressionMode === "relative" ? "1.5" : "2"}
-                  keyboardType={progressionMode === "relative" ? "decimal-pad" : "number-pad"}
+                  placeholder={progressionMode === "relative" ? "1.5" : valueKind === "decimal" ? "2.5" : "2"}
+                  keyboardType={progressionMode === "relative" || valueKind === "decimal" ? "decimal-pad" : "number-pad"}
                   value={step}
-                  onChangeText={setStep}
+                  onChangeText={(text) =>
+                    setStep(
+                      progressionMode === "relative" || valueKind === "decimal"
+                        ? text.replace(/[^0-9.]/g, "")
+                        : text.replace(/[^0-9]/g, "")
+                    )
+                  }
                 />
                 {progressionMode === "relative" ? (
                   <HintText>e.g. 1.5 for 1.5% per session.</HintText>
+                ) : valueKind === "decimal" ? (
+                  <HintText>Decimals allowed for this habit.</HintText>
                 ) : (
                   <HintText>Whole numbers only, minimum 1.</HintText>
                 )}

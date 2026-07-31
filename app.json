@@ -2,7 +2,7 @@
   "expo": {
     "name": "Notchy",
     "slug": "Notchy",
-    "version": "1.12.4",
+    "version": "1.13.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -19,7 +19,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.zoopgoop.Notchy",
-      "versionCode": 46
+      "versionCode": 47
     },
     "web": {
       "favicon": "./assets/favicon.png"

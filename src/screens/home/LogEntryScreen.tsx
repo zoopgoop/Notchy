@@ -53,7 +53,8 @@ export function LogEntryScreen({ route, navigation }: Props) {
   }, [goalId]);
 
   const isBoolean = habit?.type === "boolean";
-  const parsedValue = parseInt(actualValue, 10);
+  const valueKind = habit?.valueKind;
+  const parsedValue = valueKind === "decimal" ? parseFloat(actualValue) : parseInt(actualValue, 10);
   const canSave =
     !saving &&
     !isFrozen &&
@@ -148,9 +149,11 @@ export function LogEntryScreen({ route, navigation }: Props) {
               <FieldLabel>{target !== null ? `Today's target: ${target}${unit}` : "Value"}</FieldLabel>
               <TextField
                 placeholder={`e.g. ${target ?? ""}`}
-                keyboardType="number-pad"
+                keyboardType={valueKind === "decimal" ? "decimal-pad" : "number-pad"}
                 value={actualValue}
-                onChangeText={(text) => setActualValue(text.replace(/[^0-9]/g, ""))}
+                onChangeText={(text) =>
+                  setActualValue(valueKind === "decimal" ? text.replace(/[^0-9.]/g, "") : text.replace(/[^0-9]/g, ""))
+                }
                 autoFocus
               />
             </FieldGroup>
@@ -166,6 +169,7 @@ export function LogEntryScreen({ route, navigation }: Props) {
           currentTargetDate={goal.targetDate}
           currentTargetValue={goal.targetValue}
           unit={unit}
+          allowsDecimal={valueKind === "decimal"}
           onAdjustDate={handlePacingAdjustDate}
           onAdjustTarget={handlePacingAdjustTarget}
           onDismiss={() => {
