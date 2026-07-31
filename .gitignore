@@ -53,3 +53,4 @@ __pycache__/
 # Local module build artifacts
 modules/*/android/build/
 modules/*/android/.cxx/
+modules/*/android/.gradle/
