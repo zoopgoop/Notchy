@@ -12,6 +12,20 @@ export function getDb(): Promise<SQLite.SQLiteDatabase> {
   return dbPromise;
 }
 
+/**
+ * Closes the live connection and forgets it, so the next getDb() call reopens fresh instead
+ * of returning a handle to a connection that's about to be invalidated. Only needed around
+ * swapping the underlying database file out from under the app (see dataImport.ts) — nothing
+ * else should ever need to call this.
+ */
+export async function closeAndResetDb(): Promise<void> {
+  if (dbPromise) {
+    const db = await dbPromise;
+    await db.closeAsync();
+  }
+  dbPromise = null;
+}
+
 async function openAndMigrate(): Promise<SQLite.SQLiteDatabase> {
   const db = await SQLite.openDatabaseAsync("notchy.db");
   await db.execAsync("PRAGMA journal_mode = WAL;");

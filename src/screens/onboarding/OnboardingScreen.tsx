@@ -32,6 +32,10 @@ const INFO_STEPS = [
     title: "Managing a habit",
     body: "Press and hold any habit — on Home or the Habits tab — to view its details, add a freeze window, or deactivate it. Deactivating doesn't delete anything, and you can reactivate from the same menu anytime. Add a description to jot down why a habit matters or any technique cues — it's plain notes, editable whenever you like.",
   },
+  {
+    title: "Back up or move your data",
+    body: "Export Data in Settings shares a full backup of everything — every category, habit, goal, and logged entry. Switching phones or just want a safety net? Import Data restores from that backup file, replacing everything currently on the device.",
+  },
 ];
 
 const NAME_STEP = 0;

@@ -6,6 +6,7 @@ import { FieldGroup, FieldLabel, HintText } from "../../components/ui/FormField"
 import { PageTitle, Screen } from "../../components/ui/Screen";
 import { useOnboarding } from "../../contexts/OnboardingContext";
 import { exportAllData } from "../../services/dataExport";
+import { importAllData } from "../../services/dataImport";
 import {
   getFreezesEnabled,
   getSkipsEnabled,
@@ -20,6 +21,10 @@ export function SettingsScreen() {
   const [exportFailed, setExportFailed] = useState(false);
   const [skipsEnabled, setSkipsEnabledState] = useState(true);
   const [freezesEnabled, setFreezesEnabledState] = useState(true);
+  const [confirmImport, setConfirmImport] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSucceeded, setImportSucceeded] = useState(false);
 
   useEffect(() => {
     getSkipsEnabled().then(setSkipsEnabledState);
@@ -34,6 +39,20 @@ export function SettingsScreen() {
       setExportFailed(true);
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function handleImport() {
+    setConfirmImport(false);
+    setImporting(true);
+    try {
+      const result = await importAllData();
+      if (result.kind === "success") setImportSucceeded(true);
+      if (result.kind === "error") setImportError(result.message);
+    } catch {
+      setImportError("Something went wrong reading that backup file.");
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -76,7 +95,20 @@ export function SettingsScreen() {
 
       <FieldGroup>
         <Button title="Export Data" variant="secondary" onPress={handleExport} disabled={exporting} />
-        <HintText>Shares a full JSON backup of every category, habit, goal, and logged entry.</HintText>
+        <HintText>Shares a full backup of your database — every category, habit, goal, and logged entry.</HintText>
+      </FieldGroup>
+
+      <FieldGroup>
+        <Button
+          title="Import Data"
+          variant="secondary"
+          onPress={() => setConfirmImport(true)}
+          disabled={importing}
+        />
+        <HintText>
+          Restores from a backup file — useful when switching devices. This replaces everything currently
+          on this device.
+        </HintText>
       </FieldGroup>
 
       <FieldGroup>
@@ -91,6 +123,32 @@ export function SettingsScreen() {
         message="Something went wrong putting your data together."
         confirmLabel="OK"
         onConfirm={() => setExportFailed(false)}
+      />
+
+      <ConfirmDialog
+        visible={confirmImport}
+        title="Import data?"
+        message="This replaces everything currently on this device with the contents of the backup file you choose. This can't be undone."
+        destructive
+        confirmLabel="Choose File"
+        onConfirm={handleImport}
+        onCancel={() => setConfirmImport(false)}
+      />
+
+      <ConfirmDialog
+        visible={importError !== null}
+        title="Import failed"
+        message={importError ?? ""}
+        confirmLabel="OK"
+        onConfirm={() => setImportError(null)}
+      />
+
+      <ConfirmDialog
+        visible={importSucceeded}
+        title="Import complete"
+        message="Your data has been restored. Close and reopen Notchy for the changes to take effect."
+        confirmLabel="OK"
+        onConfirm={() => setImportSucceeded(false)}
       />
     </Screen>
   );

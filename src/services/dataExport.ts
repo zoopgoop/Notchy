@@ -1,53 +1,28 @@
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import {
-  getStreak,
-  listAllCelebrations,
-  listAllEntries,
-  listAllFreezeWindows,
-  listAllGoals,
-  listAllGoalSchedules,
-  listAllHabits,
-  listAllSkips,
-  listCategories,
-  listTags,
-} from "../db/repositories";
+import { getDb } from "../db/client";
+import { today } from "../engine/dateUtils";
 
+/**
+ * Exports a raw copy of the actual SQLite database rather than a hand-serialized JSON
+ * dump — a copy is complete by construction (every table, always, with no risk of drifting
+ * out of sync as the schema grows) and imports back in as a straight file swap instead of a
+ * bespoke ID-preserving insert pipeline. It's still directly inspectable with any standard
+ * SQLite tool (DB Browser for SQLite, DBeaver, `sqlite3` CLI, ...) if you want to look inside.
+ */
 export async function exportAllData(): Promise<void> {
-  const [categories, habits, goals, goalSchedules, entries, tags, skips, freezeWindows, celebrations] =
-    await Promise.all([
-      listCategories(),
-      listAllHabits(),
-      listAllGoals(),
-      listAllGoalSchedules(),
-      listAllEntries(),
-      listTags(),
-      listAllSkips(),
-      listAllFreezeWindows(),
-      listAllCelebrations(),
-    ]);
+  const db = await getDb();
+  // Merge any pending WAL data into the main file and truncate the WAL, so a copy of just
+  // notchy.db alone is a complete, self-contained snapshot — no separate -wal/-shm sidecar
+  // files needed alongside it.
+  await db.execAsync("PRAGMA wal_checkpoint(TRUNCATE);");
 
-  const streaks = await Promise.all(goals.map((goal) => getStreak(goal.id)));
-
-  const payload = {
-    exportedAt: new Date().toISOString(),
-    categories,
-    habits,
-    goals,
-    goalSchedules,
-    entries,
-    tags,
-    skips,
-    freezeWindows,
-    celebrations,
-    streaks,
-  };
-
-  const file = new File(Paths.cache, "notchy-export.json");
-  file.create({ overwrite: true });
-  file.write(JSON.stringify(payload, null, 2));
+  const source = new File(Paths.document, "SQLite", "notchy.db");
+  const destination = new File(Paths.cache, `notchy-backup-${today()}.db`);
+  if (destination.exists) destination.delete();
+  await source.copy(destination);
 
   if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(file.uri, { mimeType: "application/json" });
+    await Sharing.shareAsync(destination.uri, { mimeType: "application/octet-stream" });
   }
 }
