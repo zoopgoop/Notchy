@@ -75,7 +75,7 @@ const DATE_CURVE_OPTIONS: { value: CurveType; label: string }[] = [
 
 const CURVE_DESCRIPTIONS: Record<"linear" | "incremental" | "exponential", string> = {
   linear: "Steady, even pace — the same-size step every day. Best for rep counts, measurements, savings: things that improve at a constant rate.",
-  incremental: "Fast progress early, flattens out as the deadline nears. Best for flexibility/mobility goals, which genuinely behave this way.",
+  incremental: "Fast progress early, flattens out as the deadline nears. Best for goals with diminishing returns as you approach a limit — flexibility/mobility work, or strength/weight goals where gains naturally slow down.",
   exponential: "Slow start, accelerating toward the deadline. Best when you need to ramp up gradually before the real push, like building a base before a race.",
 };
 
@@ -86,7 +86,7 @@ const PROGRESSION_OPTIONS: { value: ProgressionMode; label: string }[] = [
 
 const PROGRESSION_DESCRIPTIONS: Record<ProgressionMode, string> = {
   static: "Adds the same fixed amount each session — predictable, linear-feeling progress with no deadline.",
-  relative: "No deadline needed — each target compounds off whatever you actually logged last time. Best for strength/weight training.",
+  relative: "No deadline needed — each target compounds off whatever you actually logged last time by a fixed percentage, so the absolute step grows as you do. Best for things that genuinely scale with themselves, like savings or other proportionally-growing quantities.",
 };
 
 export function HabitGoalFormScreen({ route, navigation }: Props) {
