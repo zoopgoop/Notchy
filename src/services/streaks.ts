@@ -15,8 +15,9 @@ import {
  * (see engine/schedule.ts): every log extends the streak — the streak rewards
  * showing up, not hitting the exact daily number, and scheduled days are just
  * reminder triggers now, not per-day deadlines. A week that ends short of its
- * quota resets the streak; the current week is never judged early — it's only
- * evaluated once it's actually over.
+ * quota resets the streak; the current week is judged early only via the
+ * crisis path (see HomeScreen's forfeitCurrentStreak call) — this replay on
+ * its own only fails a week once it's actually over.
  */
 export async function recomputeStreak(goal: Goal, asOfDate: string = today()): Promise<Streak> {
   const [entries, skips, freezeWindows, schedules] = await Promise.all([

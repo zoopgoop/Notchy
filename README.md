@@ -10,7 +10,7 @@ A habit-tracking Android app built with Expo / React Native. Notchy was an app b
 - **Weekly quota streaks** — the streak tracks whether you hit your scheduled check-in count each week (weeks run Monday–Sunday), not whether you logged on specific days; first and last partial weeks are pro-rated automatically
 - **Skips** — a limited skip allowance (scales with your schedule density) lets you take a planned rest without breaking a streak
 - **Freeze windows** — pause a habit for a date range without it counting against you
-- **Per-habit per-day notification times** — configure the morning reminder time independently for each day of the week, per habit; end-of-day countdown notifications fire at 10:30, 11:00, and 11:30 pm for anything still pending
+- **Per-habit per-day notification times** — configure the morning reminder time independently for each day of the week, per habit; end-of-day countdown notifications fire at 10:30pm, 11pm, 11:30pm, and 11:50pm for anything still pending
 - **Calendar views** — month-grid calendar (category-coloured dots, Monday-first) with tap-to-expand detail; per-habit boolean calendar showing logged (green) and skipped (grey) days, with weekday headers and day numbers
 - **Achievements** — a Trophy Case of badges (streaks, variety, consistency, and more) that unlock automatically as you use the app
 - **Celebrations** — milestone and streak achievements trigger animated overlays with a chime sound
@@ -37,6 +37,7 @@ src/
   engine/       Pure business logic — curves, progression, schedule, date utils
   services/     Orchestration layer — daily goals, notifications, calendar, streaks
   hooks/        React hooks that wire services to component state
+  contexts/     React context providers (onboarding state)
   screens/      All UI screens, grouped by nav stack
   components/   Shared UI components and charts
   navigation/   Navigator definitions and typed param lists
@@ -44,7 +45,7 @@ src/
   types/        Core domain interfaces
   utils/        Pure utility functions (formatting, closeness, momentum)
 assets/
-  sounds/       ding.wav — ascending C-E-G chime played on celebrations
+  sounds/       ding.wav (inline celebration chime), fanfare.wav (full-screen celebration)
 ```
 
 ## Building
@@ -77,8 +78,8 @@ Scheduled days are reminder triggers only — they determine when you get a morn
 
 - A week's required count is the number of scheduled days that fall within the week **and** within the habit's active period (pro-rated for the first and last partial weeks)
 - Freeze windows and skips can cover gaps without breaking the streak
-- The streak resets when a completed week ends short of its quota
-- The current (in-progress) week is never judged early
+- A week that simply runs its course is only ever judged once it's actually over — never mid-week
+- The exception is a **crisis**: the moment a week's quota becomes mathematically unreachable, the app acts immediately instead of waiting for the week to end — if enough skips remain, they're spent automatically to cover it; if not, the streak is forfeited right then, with the usual "start again" / "adjust habit" options offered afterward
 
 ## Progression engine
 
