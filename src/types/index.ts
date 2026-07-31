@@ -1,4 +1,7 @@
 export type HabitType = "numeric" | "boolean";
+
+/** What kind of number a numeric habit's values/targets/steps are — "whole" rounds everything to an integer (reps, sessions); "decimal" keeps one decimal place (weight, distance). Ignored for boolean habits. */
+export type ValueKind = "whole" | "decimal";
 export type Direction = "increasing" | "decreasing";
 
 /**
@@ -41,6 +44,11 @@ export interface Habit {
   notificationsEnabled: boolean;
   /** When false, overdue/catch-up notifications are suppressed on days outside the scheduled day list. */
   notifyOffSchedule: boolean;
+  /**
+   * See ValueKind. Undefined for boolean habits (no number exists to have a kind) and
+   * treated as "whole" wherever a numeric habit hasn't set it explicitly.
+   */
+  valueKind?: ValueKind;
 }
 
 /**

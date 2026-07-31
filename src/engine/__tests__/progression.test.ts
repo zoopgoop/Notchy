@@ -90,11 +90,38 @@ describe("generateNextTarget", () => {
     expect(result.target).toBeCloseTo(68); // 70 - 0.2*(70-60)
   });
 
+  it("eases toward the actual value after a miss on a step-paced (no targetDate) goal, instead of holding flat", () => {
+    const goal = makeGoal({ targetDate: undefined, targetValue: undefined });
+    const entries = [makeEntry({ date: "2026-01-06", actualValue: 65, hit: false, generatedTarget: 70 })];
+    const result = generateNextTarget(goal, makeHabit(), makeSchedule(), entries, "2026-01-07");
+    expect(result.reason).toBe("ease");
+    expect(result.target).toBeCloseTo(69); // 70 - 0.2*(70-65)
+  });
+
+  it("still deloads after 3 consecutive misses on a step-paced goal, overriding the per-miss ease", () => {
+    const goal = makeGoal({ targetDate: undefined, targetValue: undefined });
+    const entries = [
+      makeEntry({ date: "2026-01-05", actualValue: 65, hit: false, generatedTarget: 70 }),
+      makeEntry({ date: "2026-01-06", actualValue: 65, hit: false, generatedTarget: 70 }),
+      makeEntry({ date: "2026-01-07", actualValue: 65, hit: false, generatedTarget: 70 }),
+    ];
+    const result = generateNextTarget(goal, makeHabit(), makeSchedule(), entries, "2026-01-08");
+    expect(result.reason).toBe("deload");
+    expect(result.target).toBeCloseTo(68); // 70 - 0.2*(70-60)
+  });
+
   it("ignores targetDate for percentage curveType and compounds off the last value", () => {
     const goal = makeGoal({ curveType: "percentage", step: 0.02 });
     const entries = [makeEntry({ date: "2026-01-06", actualValue: 70, hit: true, generatedTarget: 68 })];
     const result = generateNextTarget(goal, makeHabit(), makeSchedule(), entries, "2026-01-07");
-    expect(result.target).toBeCloseTo(71.4); // 70 * 1.02
+    expect(result.target).toBe(71); // 70 * 1.02 = 71.4, rounded to a whole number (valueKind defaults to "whole")
+  });
+
+  it("keeps a fraction instead of rounding to a whole number when the habit's valueKind is decimal", () => {
+    const goal = makeGoal({ curveType: "percentage", step: 0.02 });
+    const entries = [makeEntry({ date: "2026-01-06", actualValue: 70, hit: true, generatedTarget: 68 })];
+    const result = generateNextTarget(goal, makeHabit({ valueKind: "decimal" }), makeSchedule(), entries, "2026-01-07");
+    expect(result.target).toBeCloseTo(71.4); // 70 * 1.02, rounded to 1 decimal place instead of a whole number
   });
 
   it("boosts the rate when adaptive and recent hit-rate is high", () => {
@@ -104,6 +131,8 @@ describe("generateNextTarget", () => {
     );
     const entries = [...history, makeEntry({ date: "2026-01-06", actualValue: 70, hit: true, generatedTarget: 68 })];
     const result = generateNextTarget(goal, makeHabit(), makeSchedule(), entries, "2026-01-07");
+    // Window's actualValue (70) against targets 61-64,68 averages ~10% overshoot, well under
+    // the big-tier threshold, so this stays the standard 1.2x boost.
     expect(result.target).toBeCloseTo(71.68); // 70 * (1 + 0.02*1.2)
   });
 

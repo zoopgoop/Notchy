@@ -1,3 +1,4 @@
+import { LoggedEntry } from "../../types";
 import {
   adaptiveMultiplier,
   deloadTarget,
@@ -8,6 +9,10 @@ import {
   percentageTarget,
   stepTarget,
 } from "../curves";
+
+function entry(hit: boolean, actualValue: number, generatedTarget: number): LoggedEntry {
+  return { id: "e", goalId: "g", date: "2026-01-01", actualValue, hit, generatedTarget, tagIds: [] };
+}
 
 describe("linearTarget", () => {
   it("interpolates start to target proportionally", () => {
@@ -88,24 +93,90 @@ describe("isHit", () => {
 
 describe("adaptiveMultiplier", () => {
   it("stays neutral with too little history", () => {
-    expect(adaptiveMultiplier([true, true])).toBe(1);
+    const entries = [entry(true, 10, 10), entry(true, 10, 10)];
+    expect(adaptiveMultiplier(entries, "increasing")).toBe(1);
   });
 
-  it("boosts when hit-rate is high", () => {
-    expect(adaptiveMultiplier([true, true, true, true, false])).toBe(1.2);
+  it("boosts (standard tier) when hit-rate is high but overshoot is modest", () => {
+    // 4 hits exactly on target (0% overshoot) + 1 miss by half (-50%) -> avg -10%, well under the big-tier threshold.
+    const entries = [
+      entry(true, 10, 10),
+      entry(true, 10, 10),
+      entry(true, 10, 10),
+      entry(true, 10, 10),
+      entry(false, 5, 10),
+    ];
+    expect(adaptiveMultiplier(entries, "increasing")).toBe(1.2);
   });
 
-  it("eases when hit-rate is low", () => {
-    expect(adaptiveMultiplier([false, false, false, true, false])).toBe(0.7);
+  it("boosts (big tier) when hit-rate is high and average overshoot clears the big-overshoot threshold", () => {
+    // 5/5 hits, each doubling the target (+100% overshoot) -> average 100%, clears the 50% big-tier threshold.
+    const entries = [
+      entry(true, 20, 10),
+      entry(true, 20, 10),
+      entry(true, 20, 10),
+      entry(true, 20, 10),
+      entry(true, 20, 10),
+    ];
+    expect(adaptiveMultiplier(entries, "increasing")).toBe(1.5);
+  });
+
+  it("dampens the tier when a bad miss is mixed into an otherwise-big-overshoot window", () => {
+    // 4 hits at +50% overshoot each (would average exactly 50% -> big tier on their own) + 1 miss at
+    // -50% pulls the whole-window average down to 30%, dropping back to the standard tier instead.
+    const entries = [
+      entry(true, 15, 10),
+      entry(true, 15, 10),
+      entry(true, 15, 10),
+      entry(true, 15, 10),
+      entry(false, 5, 10),
+    ];
+    expect(adaptiveMultiplier(entries, "increasing")).toBe(1.2);
+  });
+
+  it("is direction-aware: for a decreasing goal, coming in under target counts as overshoot", () => {
+    // 5/5 hits on a decreasing goal, each landing at half the target -> +100% overshoot, same as the
+    // increasing case above.
+    const entries = [
+      entry(true, 5, 10),
+      entry(true, 5, 10),
+      entry(true, 5, 10),
+      entry(true, 5, 10),
+      entry(true, 5, 10),
+    ];
+    expect(adaptiveMultiplier(entries, "decreasing")).toBe(1.5);
+  });
+
+  it("eases when hit-rate is low, regardless of overshoot", () => {
+    const entries = [
+      entry(false, 5, 10),
+      entry(false, 5, 10),
+      entry(false, 5, 10),
+      entry(true, 10, 10),
+      entry(false, 5, 10),
+    ];
+    expect(adaptiveMultiplier(entries, "increasing")).toBe(0.7);
   });
 
   it("holds steady in the middle band", () => {
-    expect(adaptiveMultiplier([true, false, true, false, true, false])).toBe(1);
+    const entries = [entry(true, 10, 10), entry(false, 5, 10), entry(true, 10, 10), entry(false, 5, 10), entry(true, 10, 10)];
+    expect(adaptiveMultiplier(entries, "increasing")).toBe(1);
   });
 
   it("only looks at the most recent window", () => {
-    const longHistory = [true, true, true, true, true, false, false, false, false, false];
-    expect(adaptiveMultiplier(longHistory)).toBe(0.7);
+    const longHistory = [
+      entry(true, 10, 10),
+      entry(true, 10, 10),
+      entry(true, 10, 10),
+      entry(true, 10, 10),
+      entry(true, 10, 10),
+      entry(false, 5, 10),
+      entry(false, 5, 10),
+      entry(false, 5, 10),
+      entry(false, 5, 10),
+      entry(false, 5, 10),
+    ];
+    expect(adaptiveMultiplier(longHistory, "increasing")).toBe(0.7);
   });
 });
 

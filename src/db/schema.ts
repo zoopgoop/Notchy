@@ -283,6 +283,17 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE goals DROP COLUMN notify_off_schedule;
   ALTER TABLE habits ADD COLUMN notify_off_schedule INTEGER NOT NULL DEFAULT 1;
   `,
+  `
+  -- Numeric habits have always been whole-number-only end to end (see progression.ts's
+  -- clampTowardTarget). Most habits genuinely are (reps, sessions) but some naturally
+  -- want a fraction (weight in kg, distance in km) — this lets a habit opt into decimal
+  -- values/targets/steps instead of rounding everything to the nearest whole number.
+  -- A string enum rather than a boolean so a future value kind (e.g. "time") can slot in
+  -- without a rename. NULL (not a default of 'whole') for boolean habits, same as
+  -- direction/unit_label — there's no number at all on a boolean habit, so "whole vs
+  -- decimal" isn't just irrelevant there, it's a category error to even set it.
+  ALTER TABLE habits ADD COLUMN value_kind TEXT;
+  `,
 ];
 
 export const BUILT_IN_TAGS = ["Tired", "Sore"];

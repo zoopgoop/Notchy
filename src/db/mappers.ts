@@ -14,6 +14,7 @@ import {
   SkipLog,
   Streak,
   Tag,
+  ValueKind,
 } from "../types";
 
 export interface CategoryRow {
@@ -38,6 +39,7 @@ export interface HabitRow {
   description: string | null;
   notifications_enabled: number;
   notify_off_schedule: number;
+  value_kind: string | null;
 }
 
 export function rowToHabit(row: HabitRow): Habit {
@@ -52,6 +54,7 @@ export function rowToHabit(row: HabitRow): Habit {
     description: row.description ?? undefined,
     notificationsEnabled: row.notifications_enabled !== 0,
     notifyOffSchedule: row.notify_off_schedule !== 0,
+    valueKind: (row.value_kind as ValueKind) ?? undefined,
   };
 }
 

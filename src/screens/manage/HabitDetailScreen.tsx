@@ -39,7 +39,7 @@ import {
 } from "../../db/repositories";
 import { cancelGoalNotifications } from "../../services/notifications";
 import { today } from "../../engine/dateUtils";
-import { adaptiveMultiplier } from "../../engine/curves";
+import { adaptiveMultiplier, requireDirection, roundForHabit } from "../../engine/curves";
 import { projectFutureTargets } from "../../engine/progression";
 import { scheduledDaysAsOf, weeklySkipLimitFor } from "../../engine/schedule";
 import { useCategories } from "../../hooks/useCategories";
@@ -140,9 +140,15 @@ export function HabitDetailScreen({ route, navigation }: Props) {
   // (recomputed from recent hit history) — nothing else should touch it.
   const stepInfo = useMemo(() => {
     if (!goal || !habit || habit.type === "boolean" || goal.targetDate !== undefined) return null;
-    const multiplier = goal.adaptive ? adaptiveMultiplier(entries.map((e) => e.hit)) : 1;
+    const multiplier = goal.adaptive ? adaptiveMultiplier(entries, requireDirection(habit)) : 1;
     const isRelative = goal.progressionMode === "relative";
-    const effective = goal.step * multiplier;
+    // Absolute steps round to match this habit's valueKind by construction (the goal
+    // form only accepts that precision for them) — the adaptive multiplier can still
+    // land on a finer fraction (e.g. 2 reps * 0.7 = 1.4), which isn't a real quantity for
+    // a whole-number habit, so round it for display the same way the actually-generated
+    // target already does. Relative (%) steps aren't a discrete unit, so they keep their
+    // fractional precision regardless.
+    const effective = isRelative ? goal.step * multiplier : roundForHabit(goal.step * multiplier, habit.valueKind);
     const format = (v: number) => (isRelative ? `${formatNumber(v * 100)}%` : `${formatNumber(v)}${unitSuffix(habit.unitLabel)}`);
     return { base: format(goal.step), effective: format(effective), changed: format(effective) !== format(goal.step) };
   }, [goal, habit, entries]);

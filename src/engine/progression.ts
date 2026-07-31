@@ -1,20 +1,33 @@
-import { Direction, Goal, GoalSchedule, Habit, LoggedEntry } from "../types";
+import { Direction, Goal, GoalSchedule, Habit, LoggedEntry, ValueKind } from "../types";
 import { countScheduledDaysBetween } from "./schedule";
 import { today } from "./dateUtils";
 import {
   adaptiveMultiplier,
   CONSECUTIVE_MISSES_FOR_DELOAD,
   deloadTarget,
+  easeTargetTowardActual,
   exponentialTarget,
   incrementalTarget,
   isHit,
   linearTarget,
   percentageTarget,
   requireDirection,
+  roundForHabit,
   stepTarget,
 } from "./curves";
 
-export type TargetReason = "boolean" | "initial" | "advance" | "hold" | "deload";
+export type TargetReason = "boolean" | "initial" | "advance" | "hold" | "ease" | "deload";
+
+/**
+ * Date-driven goals (a real curve paced against a targetDate) vs. step-paced ones
+ * (open-ended, or stepping toward a targetValue with no deadline) — mirrors the branch
+ * `computeBaseTarget` uses to pick its formula. Only step-paced goals get the
+ * per-miss easing below; date-driven ones must keep hitting their deadline-paced
+ * number regardless of a single miss.
+ */
+function isDateDriven(goal: Goal): goal is Goal & { targetDate: string; targetValue: number } {
+  return goal.curveType !== "percentage" && goal.targetDate !== undefined && goal.targetValue !== undefined;
+}
 
 export interface GeneratedTarget {
   target: number;
@@ -38,9 +51,9 @@ function computeBaseTarget(
   today: string,
   entries: LoggedEntry[]
 ): number {
-  const multiplier = goal.adaptive ? adaptiveMultiplier(entries.map((e) => e.hit)) : 1;
+  const multiplier = goal.adaptive ? adaptiveMultiplier(entries, direction) : 1;
 
-  if (goal.curveType !== "percentage" && goal.targetDate && goal.targetValue !== undefined) {
+  if (isDateDriven(goal)) {
     const totalPeriods = countScheduledDaysBetween(schedules, anchorDate, goal.targetDate);
     const periodsElapsed = countScheduledDaysBetween(schedules, anchorDate, today) * multiplier;
     if (goal.curveType === "linear") {
@@ -60,19 +73,20 @@ function computeBaseTarget(
 }
 
 /**
- * Numeric habits are whole-number-only by design (reps, sessions, etc. don't have
- * fractional units) — rounding here, the one chokepoint every generated target passes
+ * Numeric habits round to a whole number by default (reps, sessions, etc. don't have
+ * fractional units), or to one decimal place for habits with valueKind "decimal" (weight,
+ * distance, ...) — rounding here, the one chokepoint every generated target passes
  * through, is simpler than rounding at each of the call sites below. Goalless habits
  * have no targetValue to clamp toward, so growth is unbounded — but a decreasing
  * goalless habit (screen time, cigarettes, etc.) still can't sensibly target below
  * zero, so it gets a floor even without an explicit target.
  */
-function clampTowardTarget(value: number, goal: Goal, direction: Direction): number {
+function clampTowardTarget(value: number, goal: Goal, direction: Direction, valueKind: ValueKind | undefined): number {
   if (goal.targetValue === undefined) {
-    return Math.round(direction === "decreasing" ? Math.max(value, 0) : value);
+    return roundForHabit(direction === "decreasing" ? Math.max(value, 0) : value, valueKind);
   }
   const clamped = direction === "increasing" ? Math.min(value, goal.targetValue) : Math.max(value, goal.targetValue);
-  return Math.round(clamped);
+  return roundForHabit(clamped, valueKind);
 }
 
 function countTrailingMisses(entries: LoggedEntry[]): number {
@@ -107,19 +121,24 @@ export function generateNextTarget(
 
   if (!lastEntry) {
     // First check-in always targets the starting value — no progression on day one.
-    return { target: clampTowardTarget(goal.startValue, goal, direction), reason: "initial" };
+    return { target: clampTowardTarget(goal.startValue, goal, direction, habit.valueKind), reason: "initial" };
   }
 
   if (lastEntry.hit) {
     const anchorValue = lastEntry.actualValue ?? lastEntry.generatedTarget;
     const target = computeBaseTarget(goal, schedules, direction, anchorValue, lastEntry.date, today, entries);
-    return { target: clampTowardTarget(target, goal, direction), reason: "advance" };
+    return { target: clampTowardTarget(target, goal, direction, habit.valueKind), reason: "advance" };
   }
 
   const trailingMisses = countTrailingMisses(entries);
   if (trailingMisses >= CONSECUTIVE_MISSES_FOR_DELOAD) {
     const target = deloadTarget(lastEntry.generatedTarget, goal.startValue);
-    return { target: clampTowardTarget(target, goal, direction), reason: "deload" };
+    return { target: clampTowardTarget(target, goal, direction, habit.valueKind), reason: "deload" };
+  }
+
+  if (!isDateDriven(goal) && lastEntry.actualValue !== undefined) {
+    const target = easeTargetTowardActual(lastEntry.generatedTarget, lastEntry.actualValue);
+    return { target: clampTowardTarget(target, goal, direction, habit.valueKind), reason: "ease" };
   }
 
   return { target: lastEntry.generatedTarget, reason: "hold" };
@@ -159,9 +178,9 @@ export function projectFutureTargets(
   if (habit.type === "boolean") return [];
 
   const direction = requireDirection(habit);
-  const multiplier = goal.adaptive ? adaptiveMultiplier(entries.map((e) => e.hit)) : 1;
+  const multiplier = goal.adaptive ? adaptiveMultiplier(entries, direction) : 1;
 
-  if (goal.targetDate && goal.targetValue !== undefined && goal.curveType !== "percentage") {
+  if (isDateDriven(goal)) {
     const lastHit = [...entries].reverse().find((e) => e.hit);
     const anchorValue = lastHit ? (lastHit.actualValue ?? lastHit.generatedTarget) : goal.startValue;
     const anchorDate = lastHit?.date ?? goal.createdAt;
@@ -185,7 +204,7 @@ export function projectFutureTargets(
       } else {
         raw = incrementalTarget(anchorValue, goal.targetValue, periodsElapsed, totalPeriods);
       }
-      results.push(clampTowardTarget(raw, goal, direction));
+      results.push(clampTowardTarget(raw, goal, direction, habit.valueKind));
     }
     return results;
   }

@@ -1,4 +1,4 @@
-import { Direction, Habit } from "../types";
+import { Direction, Habit, LoggedEntry, ValueKind } from "../types";
 import { clamp } from "./dateUtils";
 
 /**
@@ -7,8 +7,10 @@ import { clamp } from "./dateUtils";
  * deadline); the `ADAPTIVE_*` ones govern the plateau-aware rate nudge — boost the pace
  * when hit-rate over the last `ADAPTIVE_WINDOW` entries clears the boost threshold, ease
  * it when hit-rate falls under the ease threshold, with `ADAPTIVE_MIN_SAMPLE` entries
- * needed before adapting at all. `DELOAD_*` softens the next target after a bad enough
- * streak of misses, rather than letting the curve keep pushing through it.
+ * needed before adapting at all. Within the boost bucket, `ADAPTIVE_BIG_*` adds a second,
+ * bigger tier once average overshoot clears its own threshold — see adaptiveMultiplier.
+ * `DELOAD_*` softens the next target after a bad enough streak of misses, rather than
+ * letting the curve keep pushing through it.
  */
 export const DEFAULT_INCREMENTAL_K = 2;
 export const DEFAULT_EXPONENTIAL_K = 2;
@@ -19,8 +21,28 @@ export const ADAPTIVE_HIT_RATE_BOOST_THRESHOLD = 0.8;
 export const ADAPTIVE_HIT_RATE_EASE_THRESHOLD = 0.4;
 export const ADAPTIVE_MIN_SAMPLE = 3;
 export const ADAPTIVE_WINDOW = 5;
+/** Within the boost bucket, a higher tier kicks in once average overshoot clears this. */
+export const ADAPTIVE_BIG_OVERSHOOT_THRESHOLD = 0.5;
+export const ADAPTIVE_BIG_BOOST_MULTIPLIER = 1.5;
+/** Clamps a single entry's overshoot ratio so one wild outlier can't dominate the average. */
+const OVERSHOOT_RATIO_MIN = -1;
+const OVERSHOOT_RATIO_MAX = 2;
 export const DELOAD_EASE_FRACTION = 0.2;
 export const CONSECUTIVE_MISSES_FOR_DELOAD = 3;
+export const MISS_EASE_FRACTION = 0.2;
+export const DECIMAL_DISPLAY_PRECISION = 1;
+
+/**
+ * Numeric habits round to a whole number by default (reps, sessions — see
+ * clampTowardTarget in progression.ts); habits with valueKind "decimal" round to
+ * `DECIMAL_DISPLAY_PRECISION` places instead, so a weight/distance-style habit doesn't
+ * accumulate meaningless float noise (62.500000001) while still keeping a fraction.
+ */
+export function roundForHabit(value: number, valueKind: ValueKind | undefined): number {
+  if (valueKind !== "decimal") return Math.round(value);
+  const factor = 10 ** DECIMAL_DISPLAY_PRECISION;
+  return Math.round(value * factor) / factor;
+}
 
 /** +1 for increasing goals, -1 for decreasing goals — multiply onto a magnitude to get a signed delta. */
 export function directionSign(direction: Direction): 1 | -1 {
@@ -119,16 +141,41 @@ export function stepTarget(lastValue: number, baseStep: number, direction: Direc
 }
 
 /**
- * Plateau-aware multiplier applied to a curve's rate/step (or its effective time
- * position for date-driven curves) based on hit-rate over the last N entries.
- * Returns 1.0 (neutral) until there's enough history to judge a trend.
+ * How far one entry cleared (positive) or fell short of (negative) its target, as a
+ * fraction of the target, direction-aware — e.g. an increasing goal hitting 20 against a
+ * target of 10 is +1.0 (100% over); missing 10 with a 5 is -0.5. Clamped so one wild
+ * outlier (a typo, a freak session) can't dominate a window average on its own. Returns
+ * null for entries with no comparable actual value, or a zero target (can't form a ratio).
  */
-export function adaptiveMultiplier(recentHits: boolean[]): number {
-  const window = recentHits.slice(-ADAPTIVE_WINDOW);
+function overshootRatio(entry: LoggedEntry, direction: Direction): number | null {
+  if (entry.actualValue === undefined || entry.generatedTarget === 0) return null;
+  const raw = (directionSign(direction) * (entry.actualValue - entry.generatedTarget)) / Math.abs(entry.generatedTarget);
+  return Math.max(OVERSHOOT_RATIO_MIN, Math.min(raw, OVERSHOOT_RATIO_MAX));
+}
+
+/**
+ * Plateau-aware multiplier applied to a curve's rate/step (or its effective time
+ * position for date-driven curves) based on hit-rate over the last N entries. Returns 1.0
+ * (neutral) until there's enough history to judge a trend.
+ *
+ * Within the boost bucket, a second tier scales the boost by how much the window is
+ * clearing its targets by on average — not just whether it did. The average is signed and
+ * spans the whole window (misses count negative), not just the hits, so one bad day mixed
+ * into an otherwise strong window dampens the boost instead of being silently ignored —
+ * while a single miss still can't drop hit-rate itself out of the boost bucket on its own;
+ * that only happens with a real pattern of misses. There's no floor below the standard
+ * 1.2x boost to fall through to here — that tier already *is* the floor.
+ */
+export function adaptiveMultiplier(entries: LoggedEntry[], direction: Direction): number {
+  const window = entries.slice(-ADAPTIVE_WINDOW);
   if (window.length < ADAPTIVE_MIN_SAMPLE) return 1;
 
-  const hitRate = window.filter(Boolean).length / window.length;
-  if (hitRate >= ADAPTIVE_HIT_RATE_BOOST_THRESHOLD) return ADAPTIVE_BOOST_MULTIPLIER;
+  const hitRate = window.filter((e) => e.hit).length / window.length;
+  if (hitRate >= ADAPTIVE_HIT_RATE_BOOST_THRESHOLD) {
+    const ratios = window.map((e) => overshootRatio(e, direction)).filter((r): r is number => r !== null);
+    const avgOvershoot = ratios.length > 0 ? ratios.reduce((sum, r) => sum + r, 0) / ratios.length : 0;
+    return avgOvershoot >= ADAPTIVE_BIG_OVERSHOOT_THRESHOLD ? ADAPTIVE_BIG_BOOST_MULTIPLIER : ADAPTIVE_BOOST_MULTIPLIER;
+  }
   if (hitRate <= ADAPTIVE_HIT_RATE_EASE_THRESHOLD) return ADAPTIVE_EASE_MULTIPLIER;
   return 1;
 }
@@ -136,4 +183,16 @@ export function adaptiveMultiplier(recentHits: boolean[]): number {
 /** Eases a target ~20% of the way back toward the goal's original start value. */
 export function deloadTarget(currentTarget: number, anchorStart: number): number {
   return currentTarget - DELOAD_EASE_FRACTION * (currentTarget - anchorStart);
+}
+
+/**
+ * Step-paced goals only: instead of holding flat after a miss, close ~20% of the gap
+ * toward what was actually logged — so a target the current pace can't reach anymore
+ * comes back down to meet reality gradually instead of staying fixed until 3 misses
+ * trigger a full deload. Date-driven goals don't get this — they're paced against a
+ * fixed deadline, not a rolling anchor, so easing per-miss would just mean missing the
+ * date instead.
+ */
+export function easeTargetTowardActual(currentTarget: number, actualValue: number): number {
+  return currentTarget - MISS_EASE_FRACTION * (currentTarget - actualValue);
 }

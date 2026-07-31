@@ -18,7 +18,7 @@ export async function createHabit(
     notifyOffSchedule: input.notifyOffSchedule ?? true,
   };
   await db.runAsync(
-    "INSERT INTO habits (id, category_id, name, type, direction, unit_label, created_at, description, notifications_enabled, notify_off_schedule) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO habits (id, category_id, name, type, direction, unit_label, created_at, description, notifications_enabled, notify_off_schedule, value_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       habit.id,
       habit.categoryId ?? null,
@@ -30,6 +30,7 @@ export async function createHabit(
       habit.description ?? null,
       habit.notificationsEnabled ? 1 : 0,
       habit.notifyOffSchedule ? 1 : 0,
+      habit.valueKind ?? null,
     ]
   );
   return habit;
@@ -67,7 +68,7 @@ export async function getHabit(id: string): Promise<Habit | null> {
 
 export async function updateHabit(
   id: string,
-  updates: Partial<Pick<Habit, "name" | "direction" | "unitLabel" | "type">>
+  updates: Partial<Pick<Habit, "name" | "direction" | "unitLabel" | "type" | "valueKind">>
 ): Promise<void> {
   const db = await getDb();
   if (updates.name !== undefined) {
@@ -81,6 +82,9 @@ export async function updateHabit(
   }
   if (updates.type !== undefined) {
     await db.runAsync("UPDATE habits SET type = ? WHERE id = ?", [updates.type, id]);
+  }
+  if (updates.valueKind !== undefined) {
+    await db.runAsync("UPDATE habits SET value_kind = ? WHERE id = ?", [updates.valueKind, id]);
   }
 }
 
