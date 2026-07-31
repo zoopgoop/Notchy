@@ -36,7 +36,7 @@ import { forfeitCurrentStreak, recomputeStreak } from "../../services/streaks";
 import { loadWeeklySummary, WeeklySummary } from "../../services/weeklySummary";
 import { addDays, daysBetween, localDateOf, today } from "../../engine/dateUtils";
 import { cardShadow, theme, UNCATEGORIZED_COLOR } from "../../theme";
-import { Celebration, Goal, Habit, LoggedEntry, SkipLog } from "../../types";
+import { Celebration, Goal, Habit, HabitType, LoggedEntry, SkipLog } from "../../types";
 import { formatNumber, unitSuffix } from "../../utils/format";
 import { mediumTap } from "../../utils/haptics";
 import { shouldShowMomentum } from "../../utils/momentum";
@@ -111,6 +111,7 @@ export function HomeScreen({ navigation }: Props) {
   const [celebrationState, setCelebrationState] = useState<{
     celebration: Celebration;
     habitName: string;
+    habitType: HabitType;
     goalId: string;
     targetDate?: string;
   } | null>(null);
@@ -145,7 +146,13 @@ export function HomeScreen({ navigation }: Props) {
       if (takePendingEncouragement()) setShowEncouragement(true);
       const pending = takePendingCelebration();
       if (pending) {
-        setCelebrationState({ celebration: pending.celebration, habitName: pending.habitName, goalId: pending.goalId, targetDate: pending.targetDate });
+        setCelebrationState({
+          celebration: pending.celebration,
+          habitName: pending.habitName,
+          habitType: pending.habitType,
+          goalId: pending.goalId,
+          targetDate: pending.targetDate,
+        });
       }
     }, [refetch, refetchCategories, loadAchieved])
   );
@@ -253,7 +260,13 @@ export function HomeScreen({ navigation }: Props) {
     refetch();
     const primary = pickPrimaryCelebration(celebrations);
     if (primary) {
-      setCelebrationState({ celebration: primary, habitName: view.habit.name, goalId: view.goal.id, targetDate: view.goal.targetDate });
+      setCelebrationState({
+        celebration: primary,
+        habitName: view.habit.name,
+        habitType: view.habit.type,
+        goalId: view.goal.id,
+        targetDate: view.goal.targetDate,
+      });
     }
   }
 
@@ -522,6 +535,7 @@ export function HomeScreen({ navigation }: Props) {
         <CelebrationOverlay
           celebration={celebrationState.celebration}
           habitName={celebrationState.habitName}
+          habitType={celebrationState.habitType}
           onDismiss={() => {
             const { celebration, habitName, goalId, targetDate } = celebrationState;
             setCelebrationState(null);

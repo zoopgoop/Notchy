@@ -78,7 +78,13 @@ export function LogEntryScreen({ route, navigation }: Props) {
 
       const primary = pickPrimaryCelebration(celebrations);
       if (primary) {
-        setPendingCelebration({ celebration: primary, habitName: habit.name, goalId: goal.id, targetDate: goal.targetDate });
+        setPendingCelebration({
+          celebration: primary,
+          habitName: habit.name,
+          habitType: habit.type,
+          goalId: goal.id,
+          targetDate: goal.targetDate,
+        });
         navigation.goBack();
         return;
       }

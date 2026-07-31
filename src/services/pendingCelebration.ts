@@ -1,8 +1,9 @@
-import { Celebration } from "../types";
+import { Celebration, HabitType } from "../types";
 
 export interface PendingCelebration {
   celebration: Celebration;
   habitName: string;
+  habitType: HabitType;
   goalId: string;
   targetDate?: string;
 }

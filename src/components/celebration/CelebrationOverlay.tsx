@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text } from "react-native";
 import { useAudioPlayer } from "expo-audio";
 import { theme } from "../../theme";
-import { Celebration } from "../../types";
+import { Celebration, HabitType } from "../../types";
 import { lightTap } from "../../utils/haptics";
 import { CELEBRATION_COPY } from "./celebrationCopy";
 import { FullCelebration } from "./FullCelebration";
@@ -14,6 +14,22 @@ function subtitleFor(celebration: Celebration, habitName: string): string {
     return `${celebration.metadata?.streak ?? ""}-day streak on ${habitName}`;
   }
   return habitName;
+}
+
+// Yes/No habits have no number to hit, so "Target hit" doesn't apply — daily_hit just
+// means the day's check-in was logged.
+function titleFor(celebration: Celebration, habitType: HabitType, defaultTitle: string): string {
+  if (celebration.type === "daily_hit" && habitType === "boolean") {
+    return "Check-in logged";
+  }
+  return defaultTitle;
+}
+
+function emojiFor(celebration: Celebration, habitType: HabitType, defaultEmoji: string): string {
+  if (celebration.type === "daily_hit" && habitType === "boolean") {
+    return "✅";
+  }
+  return defaultEmoji;
 }
 
 function Toast({
@@ -64,20 +80,24 @@ function Toast({
 export function CelebrationOverlay({
   celebration,
   habitName,
+  habitType,
   onDismiss,
 }: {
   celebration: Celebration;
   habitName: string;
+  habitType: HabitType;
   onDismiss: () => void;
 }) {
   const copy = CELEBRATION_COPY[celebration.type];
   const subtitle = subtitleFor(celebration, habitName);
+  const title = titleFor(celebration, habitType, copy.title);
+  const emoji = emojiFor(celebration, habitType, copy.emoji);
 
   if (copy.tier === "toast") {
-    return <Toast emoji={copy.emoji} title={copy.title} subtitle={subtitle} onDismiss={onDismiss} />;
+    return <Toast emoji={emoji} title={title} subtitle={subtitle} onDismiss={onDismiss} />;
   }
 
-  return <FullCelebration emoji={copy.emoji} title={copy.title} subtitle={subtitle} onDismiss={onDismiss} />;
+  return <FullCelebration emoji={emoji} title={title} subtitle={subtitle} onDismiss={onDismiss} />;
 }
 
 const styles = StyleSheet.create({
