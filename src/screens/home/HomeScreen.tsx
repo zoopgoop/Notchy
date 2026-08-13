@@ -16,6 +16,7 @@ import {
   getHabit,
   listAchievedGoals,
   listEntriesByGoal,
+  listFreezeWindowsByGoal,
   listGoalSchedules,
   listSkipsByGoal,
   restartGoalWeek,
@@ -36,7 +37,7 @@ import { forfeitCurrentStreak, recomputeStreak } from "../../services/streaks";
 import { loadWeeklySummary, WeeklySummary } from "../../services/weeklySummary";
 import { addDays, daysBetween, localDateOf, today } from "../../engine/dateUtils";
 import { cardShadow, theme, UNCATEGORIZED_COLOR } from "../../theme";
-import { Celebration, Goal, Habit, HabitType, LoggedEntry, SkipLog } from "../../types";
+import { Celebration, FreezeWindow, Goal, Habit, HabitType, LoggedEntry, SkipLog } from "../../types";
 import { formatNumber, unitSuffix } from "../../utils/format";
 import { mediumTap } from "../../utils/haptics";
 import { shouldShowMomentum } from "../../utils/momentum";
@@ -650,6 +651,7 @@ function GoalCard({
   const [expanded, setExpanded] = useState(false);
   const [entries, setEntries] = useState<LoggedEntry[] | null>(null);
   const [skips, setSkips] = useState<SkipLog[]>([]);
+  const [freezeWindows, setFreezeWindows] = useState<FreezeWindow[]>([]);
   const [projectedTargets, setProjectedTargets] = useState<number[]>([]);
   const [confirmRemoveLog, setConfirmRemoveLog] = useState(false);
 
@@ -659,11 +661,13 @@ function GoalCard({
     Promise.all([
       listEntriesByGoal(goal.id),
       listSkipsByGoal(goal.id),
+      listFreezeWindowsByGoal(goal.id),
       listGoalSchedules(goal.id),
-    ]).then(([loadedEntries, loadedSkips, loadedSchedules]) => {
+    ]).then(([loadedEntries, loadedSkips, loadedFreezeWindows, loadedSchedules]) => {
       if (cancelled) return;
       setEntries(loadedEntries);
       setSkips(loadedSkips);
+      setFreezeWindows(loadedFreezeWindows);
       if (habit.type !== "boolean") {
         setProjectedTargets(projectFutureTargets(goal, habit, loadedSchedules, loadedEntries));
       }
@@ -735,7 +739,7 @@ function GoalCard({
           {entries === null ? (
             <Text style={styles.muted}>Loading…</Text>
           ) : habit.type === "boolean" ? (
-            <HabitLogCalendar entries={entries} skips={skips} />
+            <HabitLogCalendar entries={entries} skips={skips} freezeWindows={freezeWindows} />
           ) : (
             <HabitProgressChart
               entries={entries}

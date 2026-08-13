@@ -11,11 +11,13 @@ import {
   startOfWeek,
   subMonths,
 } from "date-fns";
+import { isFrozenOn } from "../../engine/schedule";
 import { theme } from "../../theme";
-import { LoggedEntry, SkipLog } from "../../types";
+import { FreezeWindow, LoggedEntry, SkipLog } from "../../types";
 
 /** Fixed, not category-colored — category color is reserved for the multi-habit Calendar tab. */
 const LOGGED_COLOR = "#4CAF50";
+const FROZEN_COLOR = "#7EC8E3";
 const WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -32,7 +34,15 @@ function chunk<T>(items: T[], size: number): T[][] {
  * out as a real calendar month (as many week rows as the month needs). Paged a
  * month at a time, capped so it can't go past the current month.
  */
-export function HabitLogCalendar({ entries, skips }: { entries: LoggedEntry[]; skips: SkipLog[] }) {
+export function HabitLogCalendar({
+  entries,
+  skips,
+  freezeWindows,
+}: {
+  entries: LoggedEntry[];
+  skips: SkipLog[];
+  freezeWindows: FreezeWindow[];
+}) {
   const [monthAnchor, setMonthAnchor] = useState(new Date());
   const loggedDates = new Set(entries.map((e) => e.date));
   const skippedDates = new Set(skips.map((s) => s.date));
@@ -83,9 +93,11 @@ export function HabitLogCalendar({ entries, skips }: { entries: LoggedEntry[]; s
                     styles.cell,
                     loggedDates.has(dateStr)
                       ? { backgroundColor: LOGGED_COLOR }
-                      : skippedDates.has(dateStr)
-                        ? styles.cellSkipped
-                        : styles.cellEmpty,
+                      : isFrozenOn(freezeWindows, dateStr)
+                        ? { backgroundColor: FROZEN_COLOR }
+                        : skippedDates.has(dateStr)
+                          ? styles.cellSkipped
+                          : styles.cellEmpty,
                     !isSameMonth(date, monthAnchor) && styles.cellOutsideMonth,
                   ]}
                 >

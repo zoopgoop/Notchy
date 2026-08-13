@@ -1,7 +1,7 @@
 import { requireDirection } from "../engine/curves";
 import { addDays, daysBetween, getWeekday, localDateOf, today } from "../engine/dateUtils";
 import { generateNextTarget } from "../engine/progression";
-import { countScheduledDaysBetween, currentWeekStatus, nextScheduledReminder, scheduledDaysAsOf, weeklySkipLimitFor } from "../engine/schedule";
+import { countUnfrozenScheduledDaysBetween, currentWeekStatus, nextScheduledReminder, scheduledDaysAsOf, weeklySkipLimitFor } from "../engine/schedule";
 import {
   getCategory,
   getHabit,
@@ -27,7 +27,11 @@ export interface DailyGoalView {
   streak: Streak;
   skipsRemaining: number;
   skipLimit: number;
-  /** Check-ins so far this week vs. the weekly quota — only meaningful when scheduled <7 days/week. */
+  /**
+   * Check-ins so far this week vs. the weekly quota — only meaningful when scheduled
+   * <7 days/week. `required` already excludes any frozen days (see tallyWeek), so this
+   * is always the real, current requirement — no separate exemption check needed.
+   */
   weeklyProgress: { earned: number; required: number };
   /** Days remaining until the goal's target date, if it has one (negative if past). */
   daysUntilTarget: number | null;
@@ -85,10 +89,9 @@ async function loadDailyGoalView(goal: Goal, date: string): Promise<DailyGoalVie
   const weeklyProgress = { earned: weekStatus.credited, required: weekStatus.required };
   const daysUntilTarget = goal.targetDate ? daysBetween(date, goal.targetDate) : null;
 
-  const hasStreakAtStake = streak.current > 0 && !weekStatus.exempt;
-  const isUrgentToday =
-    !weekStatus.exempt && weekStatus.stillNeeded > 0 && weekStatus.daysRemaining === weekStatus.stillNeeded;
-  const quotaUnreachable = !weekStatus.exempt && weekStatus.stillNeeded > weekStatus.daysRemaining;
+  const hasStreakAtStake = streak.current > 0;
+  const isUrgentToday = weekStatus.stillNeeded > 0 && weekStatus.daysRemaining === weekStatus.stillNeeded;
+  const quotaUnreachable = weekStatus.stillNeeded > weekStatus.daysRemaining;
   const isCrisis = hasStreakAtStake && quotaUnreachable;
   const isOnIce = goal.onIce;
   const isQuotaGone = !hasStreakAtStake && quotaUnreachable && !isOnIce;
@@ -102,15 +105,16 @@ async function loadDailyGoalView(goal: Goal, date: string): Promise<DailyGoalVie
   let effectiveWeekStart = createdAt > weekStatus.weekStart ? createdAt : weekStatus.weekStart;
   if (goal.restartedAt && goal.restartedAt > effectiveWeekStart) effectiveWeekStart = goal.restartedAt;
   // Count only past scheduled days (not today) — being behind on today is isUrgentToday, not overdue.
-  const expectedByNow = countScheduledDaysBetween(schedules, addDays(effectiveWeekStart, -1), addDays(date, -1));
+  // Freeze-aware (unlike the date-driven curve's countScheduledDaysBetween) so a frozen day
+  // never reads as a missed one.
+  const expectedByNow = countUnfrozenScheduledDaysBetween(
+    schedules,
+    freezeWindows,
+    addDays(effectiveWeekStart, -1),
+    addDays(date, -1)
+  );
   const alreadyDone = status.kind === "logged" || status.kind === "skipped";
-  const isOverdue =
-    !alreadyDone &&
-    !weekStatus.exempt &&
-    !isCrisis &&
-    !isQuotaGone &&
-    !isOnIce &&
-    weekStatus.credited < expectedByNow;
+  const isOverdue = !alreadyDone && !isCrisis && !isQuotaGone && !isOnIce && weekStatus.credited < expectedByNow;
 
   // Walk backwards from yesterday to find the most recently missed scheduled day — its configured
   // notification time is used for overdue daily reminders (so Mon+Wed missed → reminds at Wed's time).

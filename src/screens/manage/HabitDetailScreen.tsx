@@ -341,7 +341,7 @@ export function HabitDetailScreen({ route, navigation }: Props) {
               <>
                 <Text style={styles.sectionLabel}>Progress</Text>
                 {habit.type === "boolean" ? (
-                  <HabitLogCalendar entries={entries} skips={skips} />
+                  <HabitLogCalendar entries={entries} skips={skips} freezeWindows={freezeWindows} />
                 ) : (
                   <HabitProgressChart
                     entries={entries}

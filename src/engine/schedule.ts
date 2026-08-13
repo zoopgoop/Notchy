@@ -41,17 +41,23 @@ function scheduledDaysForWeekOf(schedules: GoalSchedule[], date: string): number
 
 export interface WeekTally {
   weekStart: string;
-  /** How many check-ins are required this week — the count of scheduled days, not which specific ones. */
+  /** How many check-ins are required this week — the count of non-frozen scheduled days, not which specific ones. */
   required: number;
   /** Distinct days this week with a log or a skip. */
   credited: number;
-  /** A freeze window touched this week — no quota applies at all. */
-  exempt: boolean;
+}
+
+/** True while `date` falls inside any of `freezeWindows`. */
+export function isFrozenOn(freezeWindows: FreezeWindow[], date: string): boolean {
+  return freezeWindows.some((f) => f.startDate <= date && f.endDate >= date);
 }
 
 /**
  * Scheduled days are reminder triggers only now, not per-day deadlines — what
- * actually matters is hitting the weekly count somewhere, on any days.
+ * actually matters is hitting the weekly count somewhere, on any days. A freeze window
+ * prorates the requirement down rather than forgiving the whole week — only the frozen
+ * days themselves stop counting, so coming off a freeze mid-week still leaves a real
+ * (smaller) quota for whatever's left.
  */
 export function tallyWeek(
   schedules: GoalSchedule[],
@@ -65,13 +71,9 @@ export function tallyWeek(
   const loggedDates = new Set(entries.map((e) => e.date));
   const skipDates = new Set(skips.map((s) => s.date));
 
-  let exempt = false;
   let credited = 0;
   let cursor = weekStart;
   while (cursor <= weekEnd) {
-    if (freezeWindows.some((f) => f.startDate <= cursor && f.endDate >= cursor)) {
-      exempt = true;
-    }
     if (loggedDates.has(cursor) || skipDates.has(cursor)) {
       credited += 1;
     }
@@ -80,7 +82,7 @@ export function tallyWeek(
 
   // Trim the required window symmetrically: start no earlier than createdAt (first week) or
   // a restart date (see restartGoalWeek), end no later than targetDate (final week). Counts
-  // only scheduled days in that window.
+  // only scheduled days in that window, excluding any that fall inside a freeze window.
   const createdAt = localDateOf(goal.createdAt);
   let effectiveStart = createdAt > weekStart ? createdAt : weekStart;
   if (goal.restartedAt && goal.restartedAt > effectiveStart) effectiveStart = goal.restartedAt;
@@ -89,17 +91,17 @@ export function tallyWeek(
   let required = 0;
   let day = effectiveStart;
   while (day <= effectiveEnd) {
-    if (scheduledDays.includes(getWeekday(day))) required++;
+    if (scheduledDays.includes(getWeekday(day)) && !isFrozenOn(freezeWindows, day)) required++;
     day = addDays(day, 1);
   }
 
-  return { weekStart, required, credited, exempt };
+  return { weekStart, required, credited };
 }
 
 export interface ScheduleDayResult {
   date: string;
   logged: boolean;
-  /** True only on a week's last day, when that week ended short of its quota (and wasn't exempt). */
+  /** True only on a week's last day, when that week ended short of its (freeze-prorated) quota. */
   weekFailed: boolean;
 }
 
@@ -131,7 +133,7 @@ export function walkWeeklySchedule(
     if (getWeekday(cursor) === 0) {
       // Sunday — the last day of a Monday-start week.
       const tally = tallyWeek(schedules, goal, entries, skips, freezeWindows, addDays(cursor, -6));
-      weekFailed = !tally.exempt && tally.credited < tally.required;
+      weekFailed = tally.credited < tally.required;
     }
 
     results.push({ date: cursor, logged, weekFailed });
@@ -148,7 +150,6 @@ export interface WeekStatus {
   stillNeeded: number;
   /** Days left in the week, today included. */
   daysRemaining: number;
-  exempt: boolean;
 }
 
 /** The live, in-progress state of the current week — feeds urgency/crisis detection and the weekly-progress tile. */
@@ -168,7 +169,6 @@ export function currentWeekStatus(
     credited: tally.credited,
     stillNeeded: Math.max(0, tally.required - tally.credited),
     daysRemaining: 7 - daysSinceMonday(today),
-    exempt: tally.exempt,
   };
 }
 
@@ -189,6 +189,30 @@ export function countScheduledDaysBetween(schedules: GoalSchedule[], fromIso: st
   let cursor = addDays(fromIso, 1);
   while (cursor <= toIso) {
     if (scheduledDaysAsOf(schedules, cursor).includes(getWeekday(cursor))) {
+      count += 1;
+    }
+    cursor = addDays(cursor, 1);
+  }
+  return count;
+}
+
+/**
+ * Same as countScheduledDaysBetween, but excluding any day inside a freeze window — the
+ * freeze-aware counterpart used for "behind pace" detection within the current week
+ * (isOverdue), so a frozen day never reads as a missed one. Deliberately a separate
+ * function rather than a parameter on countScheduledDaysBetween — that one also feeds
+ * date-driven curve pacing, which stays freeze-oblivious by design.
+ */
+export function countUnfrozenScheduledDaysBetween(
+  schedules: GoalSchedule[],
+  freezeWindows: FreezeWindow[],
+  fromIso: string,
+  toIso: string
+): number {
+  let count = 0;
+  let cursor = addDays(fromIso, 1);
+  while (cursor <= toIso) {
+    if (scheduledDaysAsOf(schedules, cursor).includes(getWeekday(cursor)) && !isFrozenOn(freezeWindows, cursor)) {
       count += 1;
     }
     cursor = addDays(cursor, 1);

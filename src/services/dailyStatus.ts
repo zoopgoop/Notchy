@@ -1,6 +1,6 @@
 import { addDays } from "../engine/dateUtils";
 import { computeHit, generateNextTarget, TargetReason } from "../engine/progression";
-import { scheduledDaysAsOf, weeklySkipLimitFor, weekStartOf } from "../engine/schedule";
+import { isFrozenOn, scheduledDaysAsOf, weeklySkipLimitFor, weekStartOf } from "../engine/schedule";
 import { Celebration, Goal, Habit, LoggedEntry } from "../types";
 import {
   countSkipsInRollingWindow,
@@ -10,6 +10,7 @@ import {
   getSkipForDate,
   isDateFrozen,
   listEntriesByGoal,
+  listFreezeWindowsByGoal,
   listGoalSchedules,
   listSkipsByGoal,
   setGoalOnIce,
@@ -81,10 +82,17 @@ export async function skipGoalToday(goal: Goal, date: string): Promise<SkipResul
  * the streak — used to climb back out of a weekly-quota crisis before it's too
  * late to matter. Only days strictly before `date` are eligible, since today
  * isn't missed yet. Walks backwards from the most recent unaccounted day toward
- * the start of the week, so the days closest to today get covered first.
+ * the start of the week, so the days closest to today get covered first. Frozen days
+ * are skipped over — they already don't count toward the requirement (see tallyWeek),
+ * so backfilling one would waste a skip covering a day that never needed it while a
+ * genuinely missed day goes uncovered.
  */
 export async function spendSkipsToSaveStreak(goal: Goal, date: string, count: number): Promise<void> {
-  const [entries, skips] = await Promise.all([listEntriesByGoal(goal.id), listSkipsByGoal(goal.id)]);
+  const [entries, skips, freezeWindows] = await Promise.all([
+    listEntriesByGoal(goal.id),
+    listSkipsByGoal(goal.id),
+    listFreezeWindowsByGoal(goal.id),
+  ]);
   const loggedDates = new Set(entries.map((e) => e.date));
   const skipDates = new Set(skips.map((s) => s.date));
 
@@ -92,7 +100,7 @@ export async function spendSkipsToSaveStreak(goal: Goal, date: string, count: nu
   const weekStart = weekStartOf(date);
   let cursor = addDays(date, -1);
   while (cursor >= weekStart && candidates.length < count) {
-    if (!loggedDates.has(cursor) && !skipDates.has(cursor)) {
+    if (!loggedDates.has(cursor) && !skipDates.has(cursor) && !isFrozenOn(freezeWindows, cursor)) {
       candidates.push(cursor);
     }
     cursor = addDays(cursor, -1);
