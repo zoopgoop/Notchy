@@ -50,14 +50,22 @@ export async function getSkipForDate(goalId: string, date: string): Promise<Skip
   return row ? rowToSkipLog(row) : null;
 }
 
-/** Counts skips in the rolling N-day window ending on (and including) `asOfDate` — not a fixed calendar week. */
+/**
+ * Counts skips in the rolling N-day window ending on (and including) `asOfDate` — not a
+ * fixed calendar week. `notBeforeDate` (a goal's restartedAt, if set) clamps the window's
+ * start forward so a skip spent before a restart doesn't keep counting against the fresh
+ * allowance — same idea as tallyWeek trimming the quota's effectiveStart, applied here so
+ * restarting a habit actually feels like a clean slate on skips too, not just the quota.
+ */
 export async function countSkipsInRollingWindow(
   goalId: string,
   asOfDate: string,
-  windowDays: number = 7
+  windowDays: number = 7,
+  notBeforeDate?: string
 ): Promise<number> {
   const db = await getDb();
-  const windowStartIso = addDays(asOfDate, -(windowDays - 1));
+  let windowStartIso = addDays(asOfDate, -(windowDays - 1));
+  if (notBeforeDate && notBeforeDate > windowStartIso) windowStartIso = notBeforeDate;
 
   const row = await db.getFirstAsync<{ count: number }>(
     "SELECT COUNT(*) as count FROM skip_logs WHERE goal_id = ? AND date >= ? AND date <= ?",

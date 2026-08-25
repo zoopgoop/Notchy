@@ -78,7 +78,7 @@ async function loadDailyGoalView(goal: Goal, date: string): Promise<DailyGoalVie
     getDailyStatus(goal, habit, date),
     loadGoalMomentum(goal, habit),
     getStreak(goal.id),
-    getSkipsRemaining(goal.id, date),
+    getSkipsRemaining(goal, date),
     listEntriesByGoal(goal.id),
     listSkipsByGoal(goal.id),
     listFreezeWindowsByGoal(goal.id),

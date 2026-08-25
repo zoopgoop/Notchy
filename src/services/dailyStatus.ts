@@ -54,10 +54,10 @@ export type SkipResult = { ok: true } | { ok: false; reason: string };
 /** Skips ration on a rolling fortnight, not a calendar week — smooths out clustering right at a week boundary. */
 const SKIP_WINDOW_DAYS = 14;
 
-export async function getSkipsRemaining(goalId: string, date: string): Promise<number> {
+export async function getSkipsRemaining(goal: Pick<Goal, "id" | "restartedAt">, date: string): Promise<number> {
   const [used, schedules] = await Promise.all([
-    countSkipsInRollingWindow(goalId, date, SKIP_WINDOW_DAYS),
-    listGoalSchedules(goalId),
+    countSkipsInRollingWindow(goal.id, date, SKIP_WINDOW_DAYS, goal.restartedAt),
+    listGoalSchedules(goal.id),
   ]);
   const limit = weeklySkipLimitFor(scheduledDaysAsOf(schedules, date));
   return Math.max(0, limit - used);
@@ -66,7 +66,7 @@ export async function getSkipsRemaining(goalId: string, date: string): Promise<n
 /** No-explanation-needed skip, rationed by an allowance that scales with schedule size. */
 export async function skipGoalToday(goal: Goal, date: string): Promise<SkipResult> {
   const [used, schedules] = await Promise.all([
-    countSkipsInRollingWindow(goal.id, date, SKIP_WINDOW_DAYS),
+    countSkipsInRollingWindow(goal.id, date, SKIP_WINDOW_DAYS, goal.restartedAt),
     listGoalSchedules(goal.id),
   ]);
   const limit = weeklySkipLimitFor(scheduledDaysAsOf(schedules, date));
